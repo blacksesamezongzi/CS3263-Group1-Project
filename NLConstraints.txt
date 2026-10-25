@@ -1,0 +1,135 @@
+ID	Constraint
+H02	The student must complete at least the minimum total units required for their degree (160 units for the standard CS curriculum being modelled).
+H03	All compulsory modules must be included in the study plan
+The student must complete all applicable compulsory CS foundation modules.
+H08	The student must complete CS1231S.
+H09	The student must complete CS2030S.
+H10	The student must complete CS2040S.
+H11	The student must complete CS2100.
+H12	The student must complete CS2101.
+H13	The student must complete CS2103T.
+H14	The student must complete CS2106.
+H15	The student must complete CS2109S.
+H16	The student must complete CS3230.
+
+3. Mathematics and science constraints
+H17	The student must complete MA1521.
+H18	The student must complete MA1522.
+H19	The student must complete ST2334.
+
+4. Common curriculum constraints
+H20	The student must complete CS1101S to satisfy the applicable digital literacy requirement.
+H21	The student must complete ES2660 to satisfy the critique and expression requirement.
+H22	The student must complete an eligible module satisfying the cultures and connections requirement.
+H23	The student must complete an eligible module satisfying the data literacy requirement.
+H24	The student must complete an eligible module satisfying the Singapore studies requirement.
+H25	The student must complete an eligible module satisfying the communities and engagement requirement.
+H26	The student must complete IS1108 to satisfy the computing ethics requirement.
+H27	The student must complete the required number of interdisciplinary and cross-disciplinary units.
+H28	At least two modules used for the interdisciplinary/cross-disciplinary requirement must be eligible interdisciplinary modules.
+H29	At most one module used for that requirement may be an eligible cross-disciplinary module.
+H30	All common curriculum selections must comply with the eligible module lists and applicable restrictions for the student's cohort.
+
+5. CS breadth and depth constraints
+H31	The student must complete the required number of CS breadth-and-depth units (32 units for the curriculum version being modelled).
+H32	Only modules recognized as eligible CS breadth-and-depth modules may count toward this requirement.
+H33	At least 12 units counted toward CS breadth and depth must be from eligible level-4000-or-above modules.
+H34	A module already allocated to another mutually exclusive degree requirement category cannot contribute its units again to breadth and depth.
+
+6. Focus area constraints
+H35	The student's selected focus area must be one of the officially recognized CS focus areas for their cohort.
+H36	The student must complete at least three modules from the primary module list of their selected focus area.
+H37	At least one of those primary modules must be at level 4000 or above.
+H38	Only modules recognized as primary modules for the selected focus area may count toward the focus-area primary requirement.
+
+7. Unrestricted elective constraints
+H40	The student must complete the required unrestricted elective units (40 units for the standard curriculum version being modelled).
+H41	Unrestricted elective modules must be eligible for credit under the student's degree regulations.
+H42	Unrestricted elective units must not be double-counted toward other mutually exclusive unit requirements.
+H43	If unrestricted electives are represented by placeholders, the sum of placeholder units and already allocated unrestricted elective units must satisfy the outstanding unrestricted elective requirement.
+H44	Any unrestricted elective placeholder must be filled with eligible actual modules before the planner can claim to have produced a fully validated graduation schedule.
+
+8. Prerequisite constraints
+H45	A module may only be taken after the student has completed all its mandatory prerequisites.
+H46	If a module requires multiple prerequisites joined by AND, all must be satisfied before taking the module.
+H47	If a module permits alternative prerequisites joined by OR, at least one permitted alternative must be satisfied.
+H48	Prerequisites must be completed in an earlier semester unless the official requirement explicitly permits concurrent enrolment.
+
+9. Preclusion and co-requisite constraints
+H53	A module must not be selected if it is precluded by a module the student has already completed.
+H54	Modules that must be taken concurrently must be scheduled in the same semester or academic period.
+
+10. Semester availability constraints
+ID	Constraint
+H57	A module may only be scheduled in a semester in which it is offered.
+H58	A module offered only in Semester 1 must not be scheduled in Semester 2, and vice versa.
+## H60	A module requiring multiple semesters must occupy the correct number and sequence of academic periods.
+
+##Needs more planning
+11. Internship pathway constraints
+H62	The study plan must include the experiential learning pathway selected by the student.
+H63	If the student selects the 6-month internship pathway, the plan must include an eligible 6-month internship satisfying the applicable industry experience requirement.
+H64	If the student selects the 3-month internship pathway, the plan must include an eligible 3-month internship satisfying the applicable industry experience requirement.
+H65	An internship may only be scheduled in an academic or vacation period permitted by its programme rules.
+H66	The student must satisfy the internship's academic eligibility and prerequisite requirements before commencing it.
+H67	The internship must satisfy its required duration and unit-credit conditions.
+H68	Modules must not be scheduled concurrently with an internship when the internship programme prohibits such enrolment.
+H69	The selected internship pathway must contribute the required number of units to the correct degree requirement category.
+12. Final Year Project constraints
+ID	Constraint
+H70	If the student selects the FYP pathway, the study plan must include the required FYP module or modules.
+H71	The student must satisfy the minimum completed-unit requirement before commencing FYP.
+H72	The student must satisfy the applicable minimum GPA requirement if using FYP to replace industry experience.
+H73	The FYP must be scheduled in the permitted academic periods and follow its prescribed duration.
+H74	The FYP must not conflict with any applicable internship, module or programme restriction.
+H75	FYP units must be allocated to degree requirements according to the official counting rules.
+Important: If the student's future GPA is unknown, FYP eligibility cannot be guaranteed. Your system should mark the generated plan as conditional rather than treating the GPA constraint as automatically satisfied.
+
+13. Semester workload and academic planning constraints
+H76	Every regular semester must satisfy any applicable university minimum or maximum workload restrictions - At least 18 and no more than 28
+H77	Any workload restrictions specific to first-year students must be respected. (Max 23 units)
+## H78	A semester containing an internship or FYP must comply with its applicable concurrent workload restrictions.
+
+14. Additional curriculum and multi-semester constraints
+H81	At least 80% of the units required for the CS programme requirements must be at module levels 1000–4000, as specified by the current NUS CS curriculum.
+H82	Students without the required pre-university mathematics background must complete the prescribed mathematics bridging course or an approved equivalent.
+H83	If a selected communities-and-engagement course requires year-long service learning, its components must be scheduled across the required contiguous semesters.
+
+H85	The planner must not treat elective placeholders as satisfying prerequisites or module-specific requirements until actual eligible modules have been assigned.
+
+
+
+######  FOR FUTURE VERSIONS #### (Hasn't been read by a human yet)
+Part B. Soft constraints
+These are optimization preferences, not mandatory NUS graduation requirements.
+15. Workload balancing
+ID	Constraint
+S01	The solver should distribute academic workload as evenly as possible across the eight semesters.
+S02	Each regular semester should have approximately 20 units, unless the student specifies another preferred workload.
+S03	The solver should minimize semesters with unusually high workloads.
+S04	The solver should avoid placing too many academically demanding modules in the same semester.
+S05	Semesters containing FYP or internships should have lighter additional academic workloads where appropriate.
+16. Prerequisite and module sequencing
+ID	Constraint
+S06	Foundational CS modules should be completed as early as reasonably possible.
+S07	Modules that unlock many advanced modules should be prioritized earlier.
+S08	The solver should avoid unnecessarily delaying prerequisite chains.
+S09	Advanced focus-area modules should preferably be scheduled after relevant foundational knowledge has been acquired.
+S10	The solver should avoid leaving many compulsory graduation requirements until the final semester.
+17. Focus area preferences
+ID	Constraint
+S11	The solver should prioritize electives related to the student's selected focus area.
+S12	Where several eligible modules satisfy the same requirement, the solver should prefer modules matching the student's interests.
+S13	The solver should distribute demanding focus-area modules across semesters rather than clustering them unnecessarily.
+18. Internship and FYP preferences
+ID	Constraint
+S14	The internship should preferably be scheduled after the student has acquired sufficient relevant technical knowledge.
+S15	The solver should avoid unnecessarily delaying graduation to accommodate the chosen internship or FYP pathway.
+S16	The solver should prefer internship or FYP periods that minimize disruption to prerequisite chains and module availability.
+S17	For FYP students, the solver should preferably schedule relevant advanced modules before the project begins.
+19. Elective and graduation planning
+ID	Constraint
+S18	Unrestricted electives should be distributed to help balance semester workloads.
+S19	The solver should avoid placing a disproportionate number of outstanding graduation requirements in the final year.
+S20	Where alternatives exist, the solver should prefer modules with more predictable offering patterns.
+S21	The solver should preserve flexibility in later semesters for electives and advanced focus-area modules.
