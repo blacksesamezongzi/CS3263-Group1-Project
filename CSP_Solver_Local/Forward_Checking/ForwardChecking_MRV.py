@@ -2,7 +2,7 @@
 Works for bivariate as well as multivariate constraints
 """
 
-from CSP_Solver.Util import toRemove, MRV
+from ..Util import toRemove, MRV
 from time import time
 
 def BackTrack(obj, Mrv, start, timeout):

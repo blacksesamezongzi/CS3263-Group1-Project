@@ -1,4 +1,4 @@
-from CSP_Solver.Util import MRV, LCV, toRemove, verify
+from ..Util import MRV, LCV, toRemove, verify
 from .ArcConsistency_Util import makeConsistent, removeArcs, putArcs
 from time import time
 
