@@ -1,0 +1,5 @@
+# Python 3.10+; compatible minimum versions
+sortedcontainers>=2.4.0
+numpy>=1.23.5
+pytest>=7.4.0
+# Optional notebook data fetch: pip install "requests>=2.31.0"

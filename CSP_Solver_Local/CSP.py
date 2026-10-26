@@ -1,4 +1,6 @@
 import random, time
+import re
+from pathlib import Path
 from datetime import datetime
 from .Util import big
 from copy import deepcopy
@@ -15,6 +17,8 @@ from .General_LocalSearch_Algorithms.Simulated_Annealing import simulated_anneal
 from .ArcConsistency.Arc_Consistent_Backtracking import ArcConsistent_MRV_LCV
 from .Novel_Approach.My_Algorithm import My_Algo
 
+# Only FC-MRV-LCV is supported by the planner; other vendored algorithms
+# remain available for historical experiments and are not planner backends.
 class CSP:
     def __init__(self, variables, solution_path = None, problem_name = 'CSP'):
         random.seed()
@@ -28,13 +32,17 @@ class CSP:
         self.multivariateGraph = [[] for i in range(variables + 1)]
         self.AllConstraints = []
         self.stop = 0
+        self.timed_out = False
         self.problem_name = problem_name
         self.multivariate = False
         self.currentHelp = 1
         self.variableConversion = dict()
         for i in range(1,variables + 1):
             self.variableConversion[i] = i
-        if solution_path: self.solution_path = solution_path
+        if solution_path is not None:
+            output_dir = Path(solution_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self.solution_path = str(output_dir.resolve()) + "/"
     
     def commonDomain(self, domain = []):
         """
@@ -45,75 +53,77 @@ class CSP:
                 self.domains[i].add(value)
                 self.domainHelp[i].append(value)
 
-    def separateDomain(self, variable, domain = []):
-        """
-        To separately set domain values for variables
-        """
+    def separateDomain(self, variable, domain=None):
+        """Register a name (or numeric index) and set its original domain."""
         if variable not in self.variableConversion:
+            if self.currentHelp > self.variables:
+                raise ValueError("more named variables than declared variables")
             self.variableConversion[variable] = self.currentHelp
             self.variableConversion[self.currentHelp] = variable
             self.currentHelp += 1
-            
-        self.domainHelp[self.variableConversion[variable]] = deepcopy(domain)
-        self.domains[self.variableConversion[variable]] = set(domain)
+        index = self.variableConversion[variable]
+        if isinstance(variable, int):
+            index = variable
+        if not isinstance(index, int) or not 1 <= index <= self.variables:
+            raise ValueError(f"invalid variable {variable!r}")
+        values = list(dict.fromkeys([] if domain is None else domain))
+        self.domainHelp[index] = deepcopy(values)
+        self.domains[index] = set(values)
 
     def setValue(self, variable, value):
-        """
-        To Enforce Unary Constraints
-        """
-        self.domainHelp[self.variableConversion[variable]] = [value]
-        self.domains[self.variableConversion[variable]] = {value}
+        """Enforce a fixed value without overriding existing domain restrictions."""
+        index = variable if isinstance(variable, int) else self.variableConversion[variable]
+        values = [value] if value in self.domainHelp[index] else []
+        self.domainHelp[index] = values
+        self.domains[index] = set(values)
 
     def addConstraint(self, constraint):
+        """Compile a trusted expression; variable names must already be registered.
+
+        Expressions are a legacy library interface, not an interface for user/LLM
+        input. Unary rules establish node consistency in the original domains.
         """
-        Enforce constraints
-        pass comparison as string
-        """
-        numbers, prev, cur = [], False, ""
-        for i in constraint:
-            if i == ' ':
-                continue
-            if i == '[':
-                prev = True
-                continue
-            if i == ']':
-                prev = False
-                if not cur.isnumeric() and cur not in self.variableConversion:
-                    print(cur, self.currentHelp)
-                    self.variableConversion[cur] = self.currentHelp
-                    self.variableConversion[self.currentHelp] = cur
-                    self.currentHelp += 1
-                elif cur.isnumeric(): 
-                    self.variableConversion[cur] = int(cur)
-                    self.variableConversion[int(cur)] = int(cur)
-                numbers.append(self.variableConversion[cur])
-                cur = ""
-                continue
-            if prev:
-                cur += i
-        for key in self.variableConversion:
-            if str(key).isnumeric(): continue
-            constraint = constraint.replace(str(key), str(self.variableConversion[key]))
-        constraint = compile(constraint, "<string>", "eval")
-        if len(numbers) > 2:
-            self.multivariate = True
-        for i in range (len(numbers)):
-            n1 = numbers[i]
-            for j in range(i + 1, len(numbers)):
-                n2 = numbers[j];
-                self.multivariateGraph[n1].append((constraint, numbers))
-                self.multivariateGraph[n2].append((constraint, numbers))
-                if n2 in self.graphConstraints[n1]:
-                    self.graphConstraints[n1][n2].add(constraint)
-                else:
-                    self.graphConstraints[n1][n2] = {constraint}
-                if n1 in self.graphConstraints[n2]:
-                    self.graphConstraints[n2][n1].add(constraint)
-                else:
-                    self.graphConstraints[n2][n1] = {constraint}
-                self.graph[n1].add(n2)
-                self.graph[n2].add(n1)
-        self.AllConstraints.append(constraint)
+        scope = set()
+
+        def replace(match):
+            token = match.group(1)
+            if token.isdecimal():
+                index = int(token)
+                if not 1 <= index <= self.variables:
+                    raise ValueError(f"unknown variable '{token}'")
+            else:
+                index = self.variableConversion.get(token)
+                if not isinstance(index, int):
+                    raise ValueError(f"unknown variable '{token}'")
+            scope.add(index)
+            return f"value[{index}]"
+
+        expression = re.sub(r"value\[\s*([A-Za-z0-9_]+)\s*\]", replace, constraint)
+        if not scope:
+            raise ValueError("constraint must reference at least one variable")
+        compiled = compile(expression, "<constraint>", "eval")
+        numbers = tuple(sorted(scope))
+        if len(numbers) == 1:
+            index = numbers[0]
+            trial = [None] * (self.variables + 1)
+            kept = []
+            for candidate in self.domainHelp[index]:
+                trial[index] = candidate
+                if eval(compiled, {"value": trial, "__builtins__": {}}):
+                    kept.append(candidate)
+            self.domainHelp[index] = kept
+            self.domains[index] = set(kept)
+        else:
+            self.multivariate |= len(numbers) > 2
+            for index in numbers:
+                self.multivariateGraph[index].append((compiled, numbers))
+            for pos, first in enumerate(numbers):
+                for second in numbers[pos + 1:]:
+                    self.graph[first].add(second)
+                    self.graph[second].add(first)
+                    self.graphConstraints[first].setdefault(second, set()).add(compiled)
+                    self.graphConstraints[second].setdefault(first, set()).add(compiled)
+        self.AllConstraints.append(compiled)
 
     def solve_dfs(self, timeout = 10):
         self.reset()
@@ -203,28 +213,21 @@ class CSP:
             f.write(wr)
             f.close()
 
-    def solve_ForwardChecking_MRV_LCV(self, timeout = 10):
+    def solve_ForwardChecking_MRV_LCV(self, timeout=10):
+        """Run the planner-supported search; timeout is recorded by the search."""
         self.reset()
-        start = time.time()
+        start = time.perf_counter()
         ForwardChecking_MRV_LCV(self, timeout)
-        end = time.time()
+        elapsed = time.perf_counter() - start
         if hasattr(self, 'solution_path'):
-            f = open(self.solution_path + 'ForwardChecking_MRV_LCV_Solution.txt', 'w')
-            wr = self.problem_name + '\n'
-            wr += 'Time Taken: ' + str(end - start) + '\n\n'
-            if end - start > timeout:
-                print ("ForwardChecking_MRV_LCV timed out")
-                wr += "ForwardChecking_MRV_LCV timed out"
-            elif self.stop == 0:
-                print("Forward Checking MRV and LCV: No valid solution exist")
-                wr += "No valid solution exist"
-            else :
-                print("Time taken by ForwardChecking_MRV_LCV: ", end - start)
-                for i in range(1,self.variables + 1):
-                    wr += "value[" + str(self.variableConversion[i]) + "] : " + str(self.value[i]) + "\n"
-            f.write(wr)
-            f.close()
-    
+            status = "FEASIBLE" if self.stop else ("UNKNOWN" if self.timed_out else "INFEASIBLE")
+            lines = [self.problem_name, status, f"Time taken: {elapsed:.6f}s"]
+            if self.stop:
+                lines.extend(f"{self.variableConversion[i]}: {self.value[i]}"
+                             for i in range(1, self.variables + 1))
+            Path(self.solution_path, 'ForwardChecking_MRV_LCV_Solution.txt').write_text(
+                "\n".join(lines) + "\n", encoding="utf-8")
+
     def solve_HillClimbing_chooseBest(self, memoization = True, iterations = big, allowedSideMoves = None, tabuSize = 0, timeout = 10):
         self.reset()
         if allowedSideMoves == None:
@@ -447,6 +450,7 @@ class CSP:
 
     def reset(self):
         self.stop = 0
+        self.timed_out = False
         self.value = [None for i in range(self.variables + 1)]
         self.givenValue = [False for i in range(self.variables + 1)]
         self.domains = [set(self.domainHelp[i]) for i in range(self.variables + 1)]

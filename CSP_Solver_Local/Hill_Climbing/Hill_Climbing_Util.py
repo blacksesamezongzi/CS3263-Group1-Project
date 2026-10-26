@@ -1,6 +1,6 @@
 import enum
 from queue import Queue
-from CSP_Solver.Util import big
+from ..Util import big
 
 class choice(enum.Enum):
     chooseBest = 1

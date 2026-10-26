@@ -1,5 +1,5 @@
 from copy import deepcopy 
-from CSP_Solver.Util import big
+from ..Util import big
 import random
 
 class Instance:
@@ -72,8 +72,8 @@ class Instance:
 
     def ver(self):
         for i in range(1,len(self.value)):
-            if self.Faults[i][self.value[i]] is not 0:
+            if self.Faults[i][self.value[i]] != 0:
                 return False
-        if self.currentFitness is not 0:
+        if self.currentFitness != 0:
             raise Exception("Wrong Code")
         return True

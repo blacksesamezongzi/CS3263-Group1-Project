@@ -8,3 +8,8 @@ __pycache__/
 
 # PyPI configuration file
 .pypirc
+
+# Local scheduling output and test environments
+Solutions/
+.pytest_cache/
+.venv/
