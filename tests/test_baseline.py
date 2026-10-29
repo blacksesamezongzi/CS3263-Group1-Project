@@ -11,7 +11,7 @@ from planner import CS_FOUNDATION, build_foundation_problem, solve_foundation
 from planner.checker import check_schedule
 from planner.foundation import solve_csp
 from planner.validation import validate_csp_assignment
-from planner.check_rules_against_nusmods import audit_rules, project_prerequisites
+from planner.helper_functions import audit_rules, project_prerequisites
 
 
 def problem(domains, constraints=()):
@@ -228,7 +228,7 @@ def test_audit_keeps_or_semantics():
 
 
 def test_rule_audit_detects_missing_edge(tmp_path):
-    from planner.check_rules_against_nusmods import SNAPSHOT
+    from planner.helper_functions import SNAPSHOT
     data = json.loads(SNAPSHOT.read_text())
     next(m for m in data["modules"] if m["module_code"] == "CS3230")["prereq_tree"] = "CS2040S:D"
     path = tmp_path / "snapshot.json"
