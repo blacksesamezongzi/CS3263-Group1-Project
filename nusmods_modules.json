@@ -295,13 +295,10 @@
               "MA2002:D",
               "MA1505:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
               }
             ]
           },
@@ -341,13 +338,12 @@
       ],
       "preclusions": null,
       "prereq_tree": {
-        "nOf": [
-          2,
+        "and": 
           [
             "CS4248:D",
             "CS3263:D"
           ]
-        ]
+        
       }
     },
     {
@@ -402,12 +398,7 @@
         }
       ],
       "preclusions": "If undertaking an Undergraduate Degree THEN ( must not have completed 1 of CS1231/MA1100/MA1100T at a grade of at least D)",
-      "prereq_tree": {
-        "or": [
-          "MA1301X:D",
-          "MA1301:D"
-        ]
-      }
+      "prereq_tree": null
     },
     {
       "module_code": "CS2030S",
@@ -783,13 +774,12 @@
           {
             "or": [
               {
-                "nOf": [
-                  2,
+                "and": 
                   [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
+                
               },
               "MA1521:D",
               "MA2002:D",
@@ -910,13 +900,12 @@
               "MA1521:D",
               "MA2002:D",
               {
-                "nOf": [
-                  2,
+                "and": 
                   [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
+                
               }
             ]
           },
@@ -1503,58 +1492,6 @@
       }
     },
     {
-      "module_code": "CS3242",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 2,
-          "exam_date_time": "2027-04-26T05:00:00.000Z",
-          "exam_duration": 120
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed CS4342 at a grade of at least D",
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "PC1201:D",
-              "PC1221:D",
-              "PC1221X:D"
-            ]
-          },
-          "CS3241:D",
-          {
-            "or": [
-              "MA1522:D",
-              "MA1508E:D",
-              "MA1513:D",
-              "MA1311:D",
-              "MA2001:D",
-              "MA1101R:D"
-            ]
-          },
-          {
-            "or": [
-              "MA1521:D",
-              "MA2002:D",
-              "MA1505:D",
-              "MA1507:D",
-              "MA1102R:D",
-              {
-                "nOf": [
-                  2,
-                  [
-                    "MA1511:D",
-                    "MA1512:D"
-                  ]
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
       "module_code": "CS3243",
       "module_credit": "4",
       "semesters": [
@@ -1631,13 +1568,11 @@
           {
             "or": [
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
+                
               },
               {
                 "and": [
@@ -2413,13 +2348,11 @@
               "MA1521:D",
               "MA1507:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1512:D",
                     "MA1511:D"
                   ]
-                ]
+                
               }
             ]
           }
@@ -2542,13 +2475,12 @@
               "YSC1216:D",
               "MA2002:D",
               {
-                "nOf": [
-                  2,
+                "and": 
                   [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
+                
               }
             ]
           }
@@ -2812,13 +2744,12 @@
               "MA1507:D",
               "MA1521:D",
               {
-                "nOf": [
-                  2,
+                "and": 
                   [
                     "MA1512:D",
                     "MA1511:D"
                   ]
-                ]
+                
               }
             ]
           }
@@ -2925,13 +2856,11 @@
                   "NM3243:D",
                   "NM4259:D",
                   {
-                    "nOf": [
-                      2,
-                      [
+                    "and":  [
                         "ID2116:D",
                         "ID3131:D"
                       ]
-                    ]
+                    
                   }
                 ]
               }
@@ -3256,13 +3185,11 @@
               "MA1505:D",
               "MA1521:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1512:D",
                     "MA1511:D"
                   ]
-                ]
+                
               }
             ]
           }
@@ -3491,13 +3418,10 @@
               "MA1521:D",
               "MA2002:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1511:D",
                     "MA1512:D"
                   ]
-                ]
               }
             ]
           },
@@ -3596,13 +3520,10 @@
               "MA1521:D",
               "MA1507:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [                
                     "MA1512:D",
                     "MA1511:D"
                   ]
-                ]
               }
             ]
           },
@@ -4153,13 +4074,10 @@
               "MA1505:D",
               "MA1521:D",
               {
-                "nOf": [
-                  2,
-                  [
+                "and": [
                     "MA1512:D",
                     "MA1511:D"
                   ]
-                ]
               }
             ]
           }
@@ -4547,14 +4465,7 @@
         }
       ],
       "preclusions": null,
-      "prereq_tree": {
-        "cohort": {
-          "rule": "MUST_BE_IN",
-          "years": [
-            "S:2016"
-          ]
-        }
-      }
+      "prereq_tree": null
     },
     {
       "module_code": "IS1108",
@@ -4590,12 +4501,7 @@
         }
       ],
       "preclusions": "If undertaking an Undergraduate Degree THEN (( must not have completed 1 of MA1312/MA1505/MA1511/MA2002/YSC1216 at a grade of at least D) AND (must not be undertaking 1 of 0601BMEHON Bachelor of Engineering (Biomedical Engineering) (Hons), 0602CHEHON Bachelor of Engineering (Chemical Engineering) (Hons), 0604ELEHON Bachelor of Engineering (Electrical Engineering) (Hons), 0605ESPHON Bachelor of Engineering (Engineering Science) (Hons), 0607ISEHON Bachelor of Engineering (Industrial and Systems Engineering) (Hons), 0608MSEHON Bachelor of Engineering (Materials Science and Engineering) (Hons), 0609MEHON Bachelor of Engineering (Mechanical Engineering) (Hons), 0611CHEHON Bachelor of Technology (Chemical Engineering) (Hons), 0611ELCHON Bachelor of Technology (Electronics Engineering) (Hons), 0611IMEHON Bachelor of Technology (Industrial & Mgt Engineering) (Hons), 0611MEHON Bachelor of Technology (Mechanical Engineering) (Hons), 0613CEHON Bachelor of Engineering (Civil Engineering) (Hons), 0613EVEHON Bachelor of Engineering (Environmental Engineering) (Hons), 2001CEGHON Bachelor of Engineering (Computer Engineering) (Hons), 1003MAHON Bachelor of Science - Mathematics (Hons), 1003QFNHON Bachelor of Science - Quantitative Finance (Hons), 1006DSAHON Bachelor of Science (Data Science and Analytics) (Hons), 1006DSEXDP Bachelor of Science - Data Sci & Econs (Hons) XDP, 1006STHON Bachelor of Science - Statistics (Hons)))",
-      "prereq_tree": {
-        "or": [
-          "MA1301:D",
-          "MA1301X:D"
-        ]
-      }
+      "prereq_tree": null
     },
     {
       "module_code": "MA1522",
@@ -4613,12 +4519,7 @@
         }
       ],
       "preclusions": "If undertaking an Undergraduate Degree THEN (( must not have completed 1 of MA1311/MA1508E/MA1513/MA2001/YSC2232 at a grade of at least D) AND (must not be undertaking 1 of 0601BMEHON Bachelor of Engineering (Biomedical Engineering) (Hons), 0602CHEHON Bachelor of Engineering (Chemical Engineering) (Hons), 0604ELEHON Bachelor of Engineering (Electrical Engineering) (Hons), 0605ESPHON Bachelor of Engineering (Engineering Science) (Hons), 0607ISEHON Bachelor of Engineering (Industrial and Systems Engineering) (Hons), 0608MSEHON Bachelor of Engineering (Materials Science and Engineering) (Hons), 0609MEHON Bachelor of Engineering (Mechanical Engineering) (Hons), 0611CHEHON Bachelor of Technology (Chemical Engineering) (Hons), 0611ELCHON Bachelor of Technology (Electronics Engineering) (Hons), 0611IMEHON Bachelor of Technology (Industrial & Mgt Engineering) (Hons), 0611MEHON Bachelor of Technology (Mechanical Engineering) (Hons), 0613CEHON Bachelor of Engineering (Civil Engineering) (Hons), 0613EVEHON Bachelor of Engineering (Environmental Engineering) (Hons), 1003MAHON Bachelor of Science - Mathematics (Hons), 1003QFNHON Bachelor of Science - Quantitative Finance (Hons), 1006DSAHON Bachelor of Science (Data Science and Analytics) (Hons), 1006DSEXDP Bachelor of Science - Data Sci & Econs (Hons) XDP, 1006STHON Bachelor of Science - Statistics (Hons), 2001CEGHON Bachelor of Engineering (Computer Engineering) (Hons)))",
-      "prereq_tree": {
-        "or": [
-          "MA1301:D",
-          "MA1301X:D"
-        ]
-      }
+      "prereq_tree": null
     },
     {
       "module_code": "ST2334",
@@ -4930,7 +4831,7 @@
           {
             "or": [
               "LSM3257:D",
-              "CS1010%:D"
+              "CS1101S:D"
             ]
           },
           {
