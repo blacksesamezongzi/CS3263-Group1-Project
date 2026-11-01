@@ -6,13 +6,11 @@ from pathlib import Path
 from time import perf_counter
 import traceback
 from typing import Literal
-
-import CSP_Solver_Local as CS
 from .courses import COURSES, CS_FOUNDATION
 from .checker import check_schedule
 from .validation import validate_csp_assignment
 from planner import courses, helper_functions
-
+from pycsp3 import *
 
 @dataclass
 class SolveResult:
@@ -26,26 +24,9 @@ class SolveResult:
 def build_foundation_problem(courses=COURSES, fd=CS_FOUNDATION):
     common_domain = list(range(0, 9))
     fd_domain = list(range(1, 9))
-    problem = CS.CSP(len(courses), problem_name="CS3263CoursePlannerV1", solution_path='./Solution')
-    problem.commonDomain(common_domain)
-    for course in fd:
-        problem.separateDomain(course.index, fd_domain)
 
-    
-    # Add prerequisite constraints
-    for c in courses:
-        course_index = c.index
-        prereq_tree = c.prereq_tree
-        constraint = helper_functions.check_prereqs(prereq_tree, problem, course_index, courses)
-        if constraint is not None:
-            problem.addConstraint(f"(value[{str(course_index)}] == 0) or ({constraint})")
-            
-    #Add corequisite constraints
-    cs2101_index = helper_functions.course_lookup("CS2101", courses).index
-    cs2103t_index = helper_functions.course_lookup("CS2103T", courses).index
-    problem.addConstraint(f"(value[{str(cs2101_index)}] == value[{str(cs2103t_index)}])")
-
-    return problem
+    if solve() is SAT:
+        print(values(q))
 
 
 def solve_csp(csp, timeout=3.0, solver="fc_mrv_lcv") -> SolveResult:
@@ -56,6 +37,7 @@ def solve_csp(csp, timeout=3.0, solver="fc_mrv_lcv") -> SolveResult:
             raise ValueError("timeout must be finite and nonnegative")
         
         csp.solve_ForwardChecking_MRV_LCV(timeout=timeout)
+        
         
         if csp.stop:
             helper_functions.print_solution(csp, COURSES)
@@ -75,25 +57,68 @@ def solve_csp(csp, timeout=3.0, solver="fc_mrv_lcv") -> SolveResult:
     return SolveResult(status, assignment, perf_counter() - start, errors, solver)
 
 
-def solve_foundation(timeout=3.0, solution_dir=None, solver="fc_mrv_lcv", rules=COURSES) -> SolveResult:
-    start = perf_counter()
+def solve_foundation(focus_area, timeout=3.0, solution_dir=None, solver="fc_mrv_lcv", rules=COURSES) -> SolveResult:
     try:
-        result = solve_csp(build_foundation_problem(rules), timeout, solver)
+        common_domain = list(range(0, 9))
+        courses_list = VarArray(size=len(COURSES), dom=common_domain)
+
+        cs2101_index = helper_functions.course_lookup("CS2101", COURSES).index
+        cs2103t_index = helper_functions.course_lookup("CS2103T", COURSES).index
+
+        FOCUS_CODES = courses.CS_FOCUS_AREAS[focus_area]["primaries"]
+        FOCUS_COURSES = tuple(
+                        course
+                        for code in FOCUS_CODES
+                        if (course := helper_functions.course_lookup(code, COURSES)) is not None
+                    )
+
+        satisfy(
+            [courses_list[c.index] != 0 for c in CS_FOUNDATION],
+            [helper_functions.check_prereqs(c.prereq_tree, c.index, COURSES, courses_list) for c in COURSES],
+            [courses_list[cs2101_index] == courses_list[cs2103t_index]],
+            [Sum(c.module_credit * (courses_list[c.index] != 0) for c in COURSES) >= 160],
+            [Sum(c.module_credit * (courses_list[c.index] == s) for c in COURSES) >= 18
+                for s in range(2, 9)],
+            [Sum(c.module_credit * (courses_list[c.index] == s) for c in COURSES) <= 24
+                for s in range(2, 9)],
+            [Sum(c.module_credit * (courses_list[c.index] == 1) for c in COURSES) >= 18],
+            [Sum(c.module_credit * (courses_list[c.index] == 1) for c in COURSES) <= 20],
+            [
+                (courses_list[c.index] == 0) | courses_list[c.index] % 2 != 0
+                for c in COURSES
+                if len(c.semesters) == 1
+                and c.semesters[0]["semester_number"] == 1
+            ],
+            [
+                courses_list[c.index] % 2 == 0
+                for c in COURSES
+                if len(c.semesters) == 1
+                and c.semesters[0]["semester_number"] == 2
+            ],
+            [Sum(courses_list[c.index] != 0 for c in FOCUS_COURSES) >= 3],
+            [AnyHold(courses_list[c.index] != 0 for c in FOCUS_COURSES if c.module_code.startswith("CS4"))],
+
+        )
+
+        result = solve()
+        print(result)
+
+        if result is SAT:
+            for i in range(1, 9):
+                print("Semester:" + str(i))
+                sum = 0
+                for c, v in enumerate(values(courses_list)):
+                    if v == i:
+                        print(COURSES[c].module_code)
+                        sum += COURSES[c].module_credit
+                
+                print("Total creds:" + str(sum))
+
+            #helper_functions.print_solution(fd_courses_list, courses_list, COURSES)
+
+
     except Exception as error:
         result = SolveResult("ERROR", None, 0.0,
                              [f"{type(error).__name__}: {error}"], solver)
         traceback.print_exc()
 
-    result.elapsed_seconds = perf_counter() - start
-    # Planner output is written only after both validators have run.
-    if solution_dir is not None:
-        try:
-            directory = Path(solution_dir)
-            directory.mkdir(parents=True, exist_ok=True)
-            (directory / "foundation_result.json").write_text(
-                json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
-        except OSError as error:
-            result.status = "ERROR"
-            result.validation_errors.append(f"Cannot write output: {error}")
-            traceback.print_exc()
-    return result

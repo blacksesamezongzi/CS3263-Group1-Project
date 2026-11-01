@@ -1,24 +1,30 @@
+from pycsp3 import *
+
 def course_lookup(course_code, courses) -> CourseRepresentation | None:
     return next((course for course in courses if course.module_code == course_code), None)
 
-def check_prereqs(prereq_tree, problem, index, courses):
-    
-    if prereq_tree == None:
+
+def check_prereqs(prereq_tree, index, courses, semester):
+    if prereq_tree is None:
         return None
 
-    # Base case: single prerequisite course
+    # Base case: a single prerequisite course
     if isinstance(prereq_tree, str):
-        n = len(prereq_tree)
-        if prereq_tree[n-2:] == ":D" :
-            prereq_course = prereq_tree[:n-2]
-        else:
-            prereq_course = prereq_tree
-
+        prereq_course = prereq_tree.removesuffix(":D").removesuffix(":A-")
         course = course_lookup(prereq_course, courses)
+
         if course is None:
             return None
-        
-        return f"(0 < value[{str(course.index)}] and value[{str(course.index)}] < value[{str(index)}])"
+
+        prereq_index = course.index
+
+        return (
+            (semester[index] == 0)
+            | (
+                (semester[prereq_index] > 0)
+                & (semester[prereq_index] < semester[index])
+            )
+        )
 
     # Recursive case: AND / OR combinations
     if isinstance(prereq_tree, dict):
@@ -26,30 +32,48 @@ def check_prereqs(prereq_tree, problem, index, courses):
 
         for operator, prereqs in prereq_tree.items():
             subconditions = [
-                check_prereqs(p, problem, index, courses)
+                check_prereqs(p, index, courses, semester)
                 for p in prereqs
             ]
 
-            # Remove None values
-            subconditions = [c for c in subconditions if c is not None]
+            # Ignore missing / unsupported prerequisite entries
+            subconditions = [
+                condition for condition in subconditions
+                if condition is not None
+            ]
 
             if not subconditions:
                 continue
 
             if operator == "and":
-                conditions.append(f"({' and '.join(subconditions)})")
+                combined = subconditions[0]
+                for condition in subconditions[1:]:
+                    combined = combined & condition
 
             elif operator == "or":
-                conditions.append(f"({' or '.join(subconditions)})")
+                combined = subconditions[0]
+                for condition in subconditions[1:]:
+                    combined = combined | condition
 
-        # Multiple operators at the same level are combined with AND
-        return f"({' and '.join(conditions)})" if conditions else None
+            else:
+                continue
 
-    raise ValueError(f"Invalid prerequisite tree: {prereq_tree}")
+            conditions.append(combined)
 
-def print_solution(csp, courses):
-    for semester in range(1, 9):
-        print(f"\nSemester {semester}:")
-        for c in courses:
-            if csp.value[c.index] == semester:
-                print(c.module_code, end=" ")
+        if not conditions:
+            return None
+
+        # Combine multiple operator groups at this node
+        combined = conditions[0]
+        for condition in conditions[1:]:
+            combined = combined & condition
+
+        return combined
+
+    return None
+
+# def print_solution(fd_courses_list, courses_list, courses):
+#     # for semester in range(1, 9):
+#         # print(f"\nSemester {semester}:")
+#     print(values(fd_courses_list))
+#     print(values(courses_list))

@@ -42,24 +42,6 @@
       "prereq_tree": null
     },
     {
-      "module_code": "CP3106",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
       "module_code": "CP3107",
       "module_credit": "6",
       "semesters": [
@@ -93,156 +75,6 @@
           }
         ]
       }
-    },
-    {
-      "module_code": "CP3111",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CP3201",
-      "module_credit": "2",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CP3208",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CP3209",
-      "module_credit": "8",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CP3209R",
-      "module_credit": "0",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CP3880",
-      "module_credit": "12",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 3,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 4,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "IS2101:D",
-              "CS2101:D",
-              "ES1601:D",
-              "ES2002:D",
-              "ES2007D:D",
-              "ES2531:D",
-              "ES2631:D",
-              "UTW1001%:D",
-              "UWC2101%:D",
-              "NTW%:D"
-            ]
-          },
-          {
-            "or": [
-              "CS2103:D",
-              "CS2103T:D",
-              "CS2103DE:D",
-              "CS2113:D",
-              "CS2113T:D",
-              "IS3106:D",
-              "BT3103:D",
-              "IS2108:D"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "module_code": "CP4101",
-      "module_credit": "12",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
     },
     {
       "module_code": "CP4106",
@@ -1216,19 +1048,6 @@
       }
     },
     {
-      "module_code": "CS3230R",
-      "module_credit": "1",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
       "module_code": "CS3231",
       "module_credit": "4",
       "semesters": [
@@ -1386,19 +1205,6 @@
       }
     },
     {
-      "module_code": "CS3236R",
-      "module_credit": "1",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
       "module_code": "CS3237",
       "module_credit": "4",
       "semesters": [
@@ -1491,6 +1297,55 @@
         ]
       }
     },
+    {
+      "module_code": "CS3242",
+      "module_credit": "4",
+      "semesters": [
+          {
+              "semester_number": 2,
+              "exam_date_time": "2027-04-26T05:00:00.000Z",
+              "exam_duration": 120
+          }
+      ],
+      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed CS4342 at a grade of at least D",
+      "prereq_tree": {
+          "and": [
+              {
+                  "or": [
+                      "PC1201:D",
+                      "PC1221:D",
+                      "PC1221X:D"
+                  ]
+              },
+              "CS3241:D",
+              {
+                  "or": [
+                      "MA1522:D",
+                      "MA1508E:D",
+                      "MA1513:D",
+                      "MA1311:D",
+                      "MA2001:D",
+                      "MA1101R:D"
+                  ]
+              },
+              {
+                "or": [
+                    "MA1521:D",
+                    "MA2002:D",
+                    "MA1505:D",
+                    "MA1507:D",
+                    "MA1102R:D",
+                    {
+                      "and": [
+                              "MA1511:D",
+                              "MA1512:D"
+                      ]
+                    }
+                  ]
+              }
+          ]
+      }
+  },
     {
       "module_code": "CS3243",
       "module_credit": "4",
@@ -1603,7 +1458,7 @@
       }
     },
     {
-      "module_code": "CS3245R",
+      "module_code": "CS3245",
       "module_credit": "1",
       "semesters": [
         {
@@ -1612,7 +1467,7 @@
           "exam_duration": null
         }
       ],
-      "preclusions": null,
+      "preclusions": "CS2040S",
       "prereq_tree": null
     },
     {
@@ -3765,19 +3620,6 @@
       }
     },
     {
-      "module_code": "CS5424",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": "2026-11-27T01:00:00.000Z",
-          "exam_duration": 120
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate Degree, Graduate Degree Coursework or Graduate Degree ResearchTHENmust not have completed CS4224 at a grade of at least D",
-      "prereq_tree": null
-    },
-    {
       "module_code": "CS5425",
       "module_credit": "4",
       "semesters": [
@@ -4120,24 +3962,6 @@
       }
     },
     {
-      "module_code": "CS6101",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
       "module_code": "CS6203",
       "module_credit": "4",
       "semesters": [
@@ -4424,32 +4248,6 @@
       }
     },
     {
-      "module_code": "CS6282",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
-      "module_code": "CS6283",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": null
-    },
-    {
       "module_code": "ES2660",
       "module_credit": "4",
       "semesters": [
@@ -4548,304 +4346,8 @@
       }
     },
     {
-      "module_code": "ZB2101",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed LSM2241 at a grade of at least D",
-      "prereq_tree": "LSM1301:D"
-    },
-    {
-      "module_code": "ZB2201",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": "2026-11-26T01:00:00.000Z",
-          "exam_duration": 180
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed LSM2302 at a grade of at least D",
-      "prereq_tree": "LSM1301:D"
-    },
-    {
-      "module_code": "ZB3101",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed LSM3241 at a grade of at least D",
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "ZB2101:D",
-              "LSM2241:D"
-            ]
-          },
-          {
-            "or": [
-              "CS1010%:D",
-              "CS1101S:D",
-              "ZB2201:D",
-              "LSM2302:D"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "module_code": "ZB3288",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 3,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 4,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": null,
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "CS1101S:D",
-              "cs1010%:D"
-            ]
-          },
-          {
-            "or": [
-              "CS2220:D",
-              "ZB2101:D"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "module_code": "ZB3288R",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed ZB3288 at a grade of at least D",
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "CS1101S:D",
-              "cs1010%:D"
-            ]
-          },
-          {
-            "or": [
-              "CS2220:D",
-              "ZB2101:D"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "module_code": "ZB3289",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 3,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 4,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed ZB3289R at a grade of at least D",
-      "prereq_tree": "ZB3288:D"
-    },
-    {
-      "module_code": "ZB3289R",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed ZB3289 at a grade of at least D",
-      "prereq_tree": {
-        "or": [
-          "ZB3288:D",
-          "ZB3288R:D"
-        ]
-      }
-    },
-    {
-      "module_code": "ZB3310",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 3,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 4,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed 1 of CM3310/DSA3310/DSE3310/ENV3310/FST3310/LSM3310/MA3310/PC3310/PHS3310/QF3310/ST3310 at a grade of at least D",
-      "prereq_tree": {
-        "cohort": {
-          "rule": "MUST_BE_IN",
-          "years": [
-            "E:2020"
-          ]
-        }
-      }
-    },
-    {
-      "module_code": "ZB3311",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 3,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 4,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed 1 of CM3311/DSA3311/FST3311/LSM3311/MA3311/PC3311/PHS3311/QF3311/ST3311 at a grade of at least D",
-      "prereq_tree": {
-        "and": [
-          {
-            "cohort": {
-              "rule": "MUST_BE_IN",
-              "years": [
-                "E:2020"
-              ]
-            }
-          },
-          "ZB3310:D"
-        ]
-      }
-    },
-    {
-      "module_code": "ZB3312",
-      "module_credit": "12",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        },
-        {
-          "semester_number": 2,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHENmust not have completed 1 of CM3312/DSA3312/DSE3313/ENV3312/FST3312/LSM3312/MA3312/PC3312/PHS3312/QF3312/ST3312 at a grade of at least D",
-      "prereq_tree": {
-        "cohort": {
-          "rule": "MUST_BE_IN",
-          "years": [
-            "E:2020"
-          ]
-        }
-      }
-    },
-    {
-      "module_code": "ZB4171",
-      "module_credit": "4",
-      "semesters": [
-        {
-          "semester_number": 1,
-          "exam_date_time": null,
-          "exam_duration": null
-        }
-      ],
-      "preclusions": "If undertaking an Undergraduate DegreeTHEN( must not have completed YSC4211C at a grade of at least D)",
-      "prereq_tree": {
-        "and": [
-          {
-            "or": [
-              "LSM3257:D",
-              "CS1101S:D"
-            ]
-          },
-          {
-            "or": [
-              "ZB3101:D",
-              "CS2220:D"
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "module_code": "ZB4199",
-      "module_credit": "12",
+      "module_code": "GEC",
+      "module_credit": 4,
       "semesters": [
         {
           "semester_number": 1,
@@ -4862,8 +4364,8 @@
       "prereq_tree": null
     },
     {
-      "module_code": "ZB4299",
-      "module_credit": "12",
+      "module_code": "GEA",
+      "module_credit": 4,
       "semesters": [
         {
           "semester_number": 1,
@@ -4876,7 +4378,97 @@
           "exam_duration": null
         }
       ],
-      "preclusions": "If undertaking an Undergraduate Degree THEN must not have completed ZB4199 at a grade of at least D",
+      "preclusions": null,
+      "prereq_tree": null
+    },
+    {
+      "module_code": "GESS",
+      "module_credit": 4,
+      "semesters": [
+        {
+          "semester_number": 1,
+          "exam_date_time": null,
+          "exam_duration": null
+        },
+        {
+          "semester_number": 2,
+          "exam_date_time": null,
+          "exam_duration": null
+        }
+      ],
+      "preclusions": null,
+      "prereq_tree": null
+    },
+    {
+      "module_code": "GEN",
+      "module_credit": 4,
+      "semesters": [
+        {
+          "semester_number": 1,
+          "exam_date_time": null,
+          "exam_duration": null
+        },
+        {
+          "semester_number": 2,
+          "exam_date_time": null,
+          "exam_duration": null
+        }
+      ],
+      "preclusions": null,
+      "prereq_tree": null
+    },
+    {
+      "module_code": "ID1",
+      "module_credit": 4,
+      "semesters": [
+        {
+          "semester_number": 1,
+          "exam_date_time": null,
+          "exam_duration": null
+        },
+        {
+          "semester_number": 2,
+          "exam_date_time": null,
+          "exam_duration": null
+        }
+      ],
+      "preclusions": null,
+      "prereq_tree": null
+    },
+    {
+      "module_code": "ID2",
+      "module_credit": 4,
+      "semesters": [
+        {
+          "semester_number": 1,
+          "exam_date_time": null,
+          "exam_duration": null
+        },
+        {
+          "semester_number": 2,
+          "exam_date_time": null,
+          "exam_duration": null
+        }
+      ],
+      "preclusions": null,
+      "prereq_tree": null
+    },
+    {
+      "module_code": "CD",
+      "module_credit": 4,
+      "semesters": [
+        {
+          "semester_number": 1,
+          "exam_date_time": null,
+          "exam_duration": null
+        },
+        {
+          "semester_number": 2,
+          "exam_date_time": null,
+          "exam_duration": null
+        }
+      ],
+      "preclusions": null,
       "prereq_tree": null
     }
   ]

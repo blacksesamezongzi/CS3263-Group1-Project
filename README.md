@@ -1,3 +1,5 @@
+# THIS README IS OUTDATED AND WILL BE UPDATED SOON
+
 # CS course scheduling baseline
 
 This is a reproducible **CS major, AY2026/27, 15 fixed-course** semester-assignment
