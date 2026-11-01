@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 import json
+from pathlib import Path
 
-from planner import helper_functions
+from . import helper_functions
 
 @dataclass(frozen=True)
 class CourseRepresentation:
@@ -9,9 +10,9 @@ class CourseRepresentation:
     module_code: str
     module_credit: int
     semesters: list[dict]
-    prereq_tree: str | dict
+    prereq_tree: str | dict | None
 
-with open("nusmods_modules.json") as f:
+with (Path(__file__).resolve().parents[1] / "nusmods_modules.json").open(encoding="utf-8") as f:
     modules = json.load(f).get("modules", [])
 
 COURSES = [
@@ -25,11 +26,11 @@ COURSES = [
     for index, module in enumerate(modules)
 ]
 
-CS_FOUNDATION_CODES = {
+CS_FOUNDATION_CODES = (
         "CS1101S", "CS1231S", "CS2030S", "CS2040S", "CS2100",
         "CS2101", "CS2103T", "CS2106", "CS2109S", "CS3230",
         "MA1521", "MA1522", "IS1108", "ST2334", "ES2660",
-}
+)
 
 CS_FOUNDATION = tuple(
     course

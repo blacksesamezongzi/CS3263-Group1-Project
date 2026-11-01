@@ -1,3 +1,11 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .courses import CourseRepresentation
+
+
 def course_lookup(course_code, courses) -> CourseRepresentation | None:
     return next((course for course in courses if course.module_code == course_code), None)
 

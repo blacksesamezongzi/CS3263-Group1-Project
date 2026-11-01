@@ -65,7 +65,7 @@ The audit always discloses these assumptions/data issues:
   The cached prerequisite contains the cohort marker `S:2016`; this is an
   unresolved metadata anomaly, not a verified eligibility condition. Its exact
   current form is acknowledged by the audit; changes require review.
-- The file contains 177 curated records, but `total_modules_fetched` is 6733.
+- The file contains 176 curated records, but `total_modules_fetched` is 6733.
   The audit reports this discrepancy; the snapshot is not silently rewritten.
 - Out-of-scope alternatives to a usable in-scope prerequisite branch are not
   necessary for this fixed pathway. Entirely external prerequisite groups must
@@ -110,3 +110,17 @@ This baseline does not cover units, semester workload, offering semesters,
 electives, focus areas, completed courses, internships/SEP, or timetable clashes.
 It does not establish graduation eligibility. Course placement may be uneven and
 some semesters may be empty. No LLM integration or website is included.
+
+## Integration note after the constraints merge
+
+The fixed-course commands use `planner.foundation` and `planner.cs_foundation`.
+The newer snapshot-based implementation remains in `planner.course_planner`
+and `planner.courses`; its `CS_FOUNDATION` is a tuple of course records, distinct
+from the fixed-baseline rule object exported by `planner`.
+
+The constraints merge cleared `prereq_tree` fields for CS1231S, MA1521,
+MA1522 and ES2660. Those four fields have been restored from commit `87408ad`,
+without changing other merged snapshot data. The audit again reports zero
+unexplained mismatches. Entry mathematics and the ES2660 cohort marker remain
+explicit assumptions/data notes; restoring cached metadata does not verify
+student eligibility or resolve the S:2016 anomaly.

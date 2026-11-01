@@ -11,7 +11,7 @@ from planner import CS_FOUNDATION, build_foundation_problem, solve_foundation
 from planner.checker import check_schedule
 from planner.foundation import solve_csp
 from planner.validation import validate_csp_assignment
-from planner.helper_functions import audit_rules, project_prerequisites
+from planner.check_rules_against_nusmods import audit_rules, project_prerequisites
 
 
 def problem(domains, constraints=()):
@@ -218,7 +218,7 @@ def test_rule_audit():
     result = audit_rules()
     assert result.mismatches == []
     assert any("S:2016" in note for note in result.disclosures)
-    assert any("177" in note and "6733" in note for note in result.disclosures)
+    assert any("176" in note and "6733" in note for note in result.disclosures)
 
 
 def test_audit_keeps_or_semantics():
@@ -228,7 +228,7 @@ def test_audit_keeps_or_semantics():
 
 
 def test_rule_audit_detects_missing_edge(tmp_path):
-    from planner.helper_functions import SNAPSHOT
+    from planner.check_rules_against_nusmods import SNAPSHOT
     data = json.loads(SNAPSHOT.read_text())
     next(m for m in data["modules"] if m["module_code"] == "CS3230")["prereq_tree"] = "CS2040S:D"
     path = tmp_path / "snapshot.json"
@@ -254,3 +254,33 @@ def test_invalid_timeout(timeout):
 
 def test_unsupported_solver():
     assert solve_foundation(solver="unimplemented").status == "ERROR"
+
+
+def test_documented_command_entry_points():
+    import subprocess
+    import sys
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    schedule = subprocess.run(
+        [sys.executable, "-m", "planner.run_foundation"], cwd=root,
+        capture_output=True, text=True)
+    assert schedule.returncode == 0, schedule.stderr
+    assert "Status: FEASIBLE" in schedule.stdout
+    audit = subprocess.run(
+        [sys.executable, "-m", "planner.check_rules_against_nusmods"], cwd=root,
+        capture_output=True, text=True)
+    # A data mismatch is a valid audit outcome; import/module failures are not.
+    assert audit.returncode in (0, 1), audit.stderr
+    assert "Unexplained mismatches:" in audit.stdout
+    assert "Traceback" not in audit.stderr
+
+
+def test_merged_course_helpers_import_without_cycle():
+    from planner.courses import COURSES, CS_FOUNDATION, CourseRepresentation
+    from planner.helper_functions import course_lookup
+    from planner import course_planner
+    found = course_lookup("CS1101S", COURSES)
+    assert isinstance(found, CourseRepresentation)
+    assert len(CS_FOUNDATION) == 15
+    assert course_lookup("MISSING", COURSES) is None
+    assert callable(course_planner.solve_foundation)
