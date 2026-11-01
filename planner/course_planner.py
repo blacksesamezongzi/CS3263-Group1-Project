@@ -20,42 +20,6 @@ class SolveResult:
     validation_errors: list[str]
     solver: str
 
-#Add all constraints here
-def build_foundation_problem(courses=COURSES, fd=CS_FOUNDATION):
-    common_domain = list(range(0, 9))
-    fd_domain = list(range(1, 9))
-
-    if solve() is SAT:
-        print(values(q))
-
-
-def solve_csp(csp, timeout=3.0, solver="fc_mrv_lcv") -> SolveResult:
-    """Solve a generic instance and enforce solver postconditions."""
-    start = perf_counter()
-    try:        
-        if not math.isfinite(timeout) or timeout < 0:
-            raise ValueError("timeout must be finite and nonnegative")
-        
-        csp.solve_ForwardChecking_MRV_LCV(timeout=timeout)
-        
-        
-        if csp.stop:
-            helper_functions.print_solution(csp, COURSES)
-            assignment = {i: csp.value[i]
-                          for i in range(1, csp.variables + 1)}
-            errors = validate_csp_assignment(csp, assignment)
-            status = "ERROR" if errors else "FEASIBLE"
-        else:
-            assignment, errors = None, []
-            status = "INFEASIBLE"
-
-    except Exception as error:
-        status, assignment = "ERROR", None
-        errors = [f"{type(error).__name__}: {error}"]
-        traceback.print_exc()
-
-    return SolveResult(status, assignment, perf_counter() - start, errors, solver)
-
 
 def solve_foundation(focus_area, timeout=3.0, solution_dir=None, solver="fc_mrv_lcv", rules=COURSES) -> SolveResult:
     try:
