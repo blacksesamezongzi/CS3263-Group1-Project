@@ -1,16 +1,16 @@
 """Schedule checks using only curriculum data, independent of the CSP library."""
-from .courses import COURSES, CS_FOUNDATION
+from .cs_foundation import CS_FOUNDATION
 
 
 def check_schedule(assignment, rules=CS_FOUNDATION):
     errors = []
-    expected = set(rules)
+    expected = set(rules.courses)
     for course in sorted(expected - assignment.keys()):
         errors.append(f"Missing course {course}")
     for course in sorted(assignment.keys() - expected):
         errors.append(f"Unexpected course {course}")
     valid = set()
-    for course in rules:
+    for course in rules.courses:
         if course in assignment:
             semester = assignment[course]
             if type(semester) is not int or semester not in rules.semesters:
