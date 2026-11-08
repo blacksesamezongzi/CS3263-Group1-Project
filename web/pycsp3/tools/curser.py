@@ -1,0 +1,1551 @@
+import dis
+import keyword
+import os
+import sys
+import sysconfig
+import types
+from collections import deque, namedtuple, abc
+
+from pycsp3 import functions
+from pycsp3.classes.entities import ECtr, EMetaCtr
+from pycsp3.classes.main.constraints import (
+    ScalarProduct, PartialConstraint, ConstraintAllDifferentList, ConstraintSum, ConstraintElement, ConstraintElementMatrix, ConstraintInstantiation,
+    ConstraintRefutation, ConstraintDummyConstant, auxiliary, global_indirection, manage_global_indirection)
+from pycsp3.classes.main.variables import Domain, Variable, VariableInteger
+from pycsp3.classes.nodes import Node, TypeNode
+from pycsp3.dashboard import options
+from pycsp3.libs.forbiddenfruit import curse
+from pycsp3.tools.utilities import (flatten, is_containing, unique_type_in, is_1d_tuple, is_1d_list, is_1d_tuple, is_2d_list, is_matrix, is_square_matrix,
+                                    is_cube, ANY, structured_list, warning, error, error_if, AttributeDict)
+
+queue_in = deque()  # To store partial constraints when using the IN operator
+
+
+def check_no_negated_membership(values):
+    # ~(e in S) and ~(e not in S) give the integers -2 and -1, Python evaluating an expression 'in' as a Boolean (the expression being kept aside in
+    # queue_in): such an integer cannot be the operand of a logical operator, nor a constraint (values is an iterable)
+    if len(queue_in) > 0:
+        for v in values:
+            if type(v) is int and (v == -2 or v == -1):
+                if v == -2:
+                    error("The operator ~ cannot be applied to an expression with 'in', which Python evaluates as a Boolean (~True being -2): "
+                          "write 'not in' instead, as in x not in {1, 3} for ~(x in {1, 3})")
+                error("The operator ~ cannot be applied to an expression with 'not in', which Python evaluates as a Boolean (~False being -1): "
+                      "write 'in' instead, as in x in {1, 3} for ~(x not in {1, 3})")
+
+unsafe_cache = False  # see for example Pic since the table is released as it occurs as a parameter
+
+
+def _replace_node_in(node, values):
+    # a node compared with 'in' or 'not in' is replaced by an auxiliary variable, except for a variable with a coefficient (as x[0] * 3, also given by
+    # Sum(x[0] * 3) or x[:1] * [3]) compared with integers, which gives a sum of one term (#208), not with -mini (the mini-tracks requiring at least
+    # two terms in a sum); with variables among the values (only possible in intension), the auxiliary variable is used
+    pair = node.var_val_if_binary_type(TypeNode.MUL)
+    if pair is not None and not options.mini and all(isinstance(v, int) for v in values):
+        return PartialConstraint(ConstraintSum([pair[0]], [pair[1]], None))
+    return auxiliary().replace_node(node)
+
+
+def at_least_one_variable_and_possibly_integers(t):  # as the values of v in [x[0], 2]
+    return len(t) > 0 and all(isinstance(w, (Variable, int)) for w in t) and any(isinstance(w, Variable) for w in t)
+
+
+def _set_contains(self, other):  # for being able to use 'in' when expressing intension/extension constraints
+    if not OpOverrider.activated:
+        return self.__contains__(other)
+    if isinstance(other, (int, str)) and (len(self) == 0 or not isinstance(next(iter(self)), Variable)):
+        return self.__contains__(other)  # a value and a set of values (not of variables): an ordinary membership
+    if isinstance(other, ConstraintDummyConstant):  # a constant (as the count of no term), evaluated when the constraint is posted
+        queue_in.append((self, other))
+        return True
+    if isinstance(other, ScalarProduct):
+        other = other.to_partial_sum()
+    # if len(self) == 0:
+    #     return False
+    if isinstance(other, Node):
+        other = _replace_node_in(other, self)
+    if isinstance(other, types.GeneratorType):
+        other = list(other)
+    if isinstance(other, (tuple, list)) and unique_type_in(other, Variable) and not is_containing(other, Variable):  # removing possible occurrences of None
+        other = [v for v in other if v]
+    tself = unique_type_in(self)
+    # if isinstance(other, Variable) and len(self) > 0 and is_containing(self, int):  # unary table constraint
+    if isinstance(other, Variable) and tself in {int, str}:  # unary table constraint
+        queue_in.append((list(self), other))
+        return True
+    # if isinstance(other, (Variable, PartialConstraint)) or isinstance(other, (int, str)) and is_containing(self, Variable):  # intension constraint
+    if isinstance(other, (Variable, PartialConstraint)) or isinstance(other, (int, str)) and tself and issubclass(tself, Variable):  # intension constraint
+        queue_in.append((self, other))
+        return True
+    # if is_1d_tuple(other, Variable) or is_1d_list(other, Variable):  # non-unary table constraint
+    #     queue_in.append((list(self), other))
+    #     return True
+    if isinstance(other, (tuple, list)) and is_containing(other, (Variable, Node, types.GeneratorType)):  # non-unary table constraint
+        ll = flatten(other)
+        for i in range(len(ll)):  # we replace nodes by auxiliary variables if present
+            if isinstance(ll[i], Node):
+                ll[i] = auxiliary().replace_node(ll[i])
+                # if is_containing(other, Variable):  # non-unary table constraint
+        if unsafe_cache:
+            if not hasattr(_set_contains, "cache"):
+                _set_contains.cache = {}
+            if id(self) not in _set_contains.cache:
+                _set_contains.cache[id(self)] = list({tuple(v) if isinstance(v, types.GeneratorType) else v for v in self})
+        queue_in.append((_set_contains.cache[id(self)] if unsafe_cache else list(self), ll))  # flatten(other)))
+        return True
+    return self.__contains__(other)
+
+
+def cursing():
+    def _list_mul(self, other):  # for being able to use scalar products
+        if not OpOverrider.activated:
+            return self.__mul__(other)
+        if isinstance(self, (tuple, list)) and isinstance(other, (tuple, list)):
+            if len(self) == len(other):
+                if is_containing(self, (Variable, Node), check_first_only=True):
+                    return ScalarProduct(self, other)
+                elif is_containing(other, (Variable, Node), check_first_only=True):
+                    return ScalarProduct(other, self)
+        if isinstance(self, int) and isinstance(other, (tuple, list)) and is_containing(other, (Variable, Node), check_first_only=True):
+            return ScalarProduct(other, [self] * len(other))
+        if isinstance(other, int) and isinstance(self, (tuple, list)) and is_containing(self, (Variable, Node), check_first_only=True):
+            return ScalarProduct(self, [other] * len(self))
+        return self.__mul__(other)
+
+    # def _list_rmul(self, other):  # TODO: should we activate it?
+    #     return _list_mul(self, other)
+
+    def _tuple_contains(self, other):  # for being able to use 'in' when expressing extension constraints (we need this even not wished
+        # because sometimes Python changes lists into tuples in comprehension expressions
+        if not OpOverrider.activated:
+            return self.__contains__(other)
+        if isinstance(other, ConstraintDummyConstant):  # a constant (as the count of no term), evaluated when the constraint is posted
+            queue_in.append((self, other))
+            return True
+        if not isinstance(other, (tuple, list, types.GeneratorType)) and any(isinstance(t, ConstraintDummyConstant) for t in self):
+            self = tuple(t.val if isinstance(t, ConstraintDummyConstant) else t for t in self)  # constants among the values, as in v in (c, 4)
+        if isinstance(other, ScalarProduct):
+            other = other.to_partial_sum()
+        # if len(self) == 0:
+        #     return False
+        if isinstance(other, Node):
+            other = _replace_node_in(other, self)
+        if isinstance(other, PartialConstraint):
+            queue_in.append((list(self), other))  # the values of the condition of the component (any value other than an integer reported when posting)
+            return True
+        # note that Python changes into a tuple a list given literally on the right of 'in', as in x in [[0, 1], [1, 0]] or x in ['a', 'b']
+        if is_containing(other, Variable) and len(self) > 0 and isinstance(self[0], (tuple, list, int, str)):
+            queue_in.append((list(self), other))
+            return True
+        if len(self) == 0 and is_containing(other, Variable):  # as for an empty set (e.g., x not in [], where [] is changed into ())
+            return _set_contains(set(self), other)  # a call (and not 'in', whose instruction could be specialized from Python 3.13)
+        if isinstance(other, int) and (is_1d_list(self, Variable) or is_1d_tuple(self, Variable)) and len(self) > 0:  # member/element constraint
+            queue_in.append((self, other))
+            return True
+        if isinstance(other, Variable) and len(self) > 0 and is_1d_tuple(self, Variable):  # member constraint, as for a list
+            queue_in.append((list(self), other))
+            return True
+        if isinstance(other, (Variable, Node)) and at_least_one_variable_and_possibly_integers(self):
+            return _set_contains(set(self), other)  # variables and integers, handled as a set
+        return self.__contains__(other)
+
+    # def _list_getitem(self, other):
+    #     if not OpOverrider.activated:
+    #         return self.__getitem__(other)
+    #     # if isinstance(other, Variable):
+    #     #     return cp_array(self)[other]
+    #     return list.__getitem__(self, other)
+
+    def _list_contains(self, other):  # for being able to use 'in' when expressing extension constraints
+        if not OpOverrider.activated:
+            return self.__contains__(other)
+        if isinstance(other, ConstraintDummyConstant):  # a constant (as the count of no term), evaluated when the constraint is posted
+            queue_in.append((self, other))
+            return True
+        if not isinstance(other, (tuple, list, types.GeneratorType)) and any(isinstance(t, ConstraintDummyConstant) for t in self):
+            self = [t.val if isinstance(t, ConstraintDummyConstant) else t for t in self]  # constants among the values, as in v in [c, 4]
+        if isinstance(other, ScalarProduct):
+            other = other.to_partial_sum()
+        # if len(self) == 0:
+        #     return False
+        if isinstance(other, Node):
+            other = _replace_node_in(other, self)
+        if isinstance(other, PartialConstraint):
+            queue_in.append((list(self), other))  # the values of the condition of the component (any value other than an integer reported when posting)
+            return True
+        if isinstance(other, types.GeneratorType):
+            other = list(other)
+        if isinstance(other, (tuple, list)) and unique_type_in(other, Variable) and not is_containing(other, Variable):  # removing possible occurrences of None
+            other = flatten(other)  # [v for v in other if v]
+        if is_containing(other, Variable) and len(self) > 0 and isinstance(self[0], (list, tuple, int, str)):
+            queue_in.append((self, other))
+            return True
+        if len(self) == 0 and is_containing(other, Variable):
+            return _set_contains(set(self), other)  # a call (and not 'in', whose instruction could be specialized from Python 3.13)
+        if isinstance(other, Variable) and isinstance(self, list):
+            for i, v in enumerate(self):
+                # TODO: certainly other cases (not just PartialConstraint) to be handled
+                if isinstance(self[i], PartialConstraint):
+                    self[i] = auxiliary().replace_partial_constraint(self[i])
+            if is_1d_list(self, Variable):
+                queue_in.append((self, other))
+                return True
+        if isinstance(other, (Variable, Node)) and at_least_one_variable_and_possibly_integers(self):
+            return _set_contains(set(self), other)  # variables and integers, handled as a set
+        error_if(is_containing(other, Variable),
+                 "It seems that you should use a set and not a list, as in x in {...}." + " Your arguments are " + str(other) + " " + str(self))
+        if isinstance(other, int) and (is_1d_list(self, Variable) or is_1d_tuple(self, Variable)) and len(self) > 0:  # member/element constraint
+            queue_in.append((self, other))
+            return True
+        if isinstance(other, (tuple, list)) and is_containing(other, (Variable, Node, types.GeneratorType)):  # non-unary table constraint
+            ll = flatten(other)
+            for i in range(len(ll)):  # we replace nodes by auxiliary variables if present
+                if isinstance(ll[i], Node):
+                    ll[i] = auxiliary().replace_node(ll[i])
+            queue_in.append((list(self), ll))
+            return True
+        return self.__contains__(other)
+
+    def _range_contains(self, other):  # for being able to use 'in' when expressing conditions of constraints
+        if not OpOverrider.activated:
+            return self.__contains__(other)
+        if isinstance(other, ConstraintDummyConstant):  # a constant (as the count of no term), evaluated when the constraint is posted
+            queue_in.append((self, other))
+            return True
+        if isinstance(other, ScalarProduct):
+            other = other.to_partial_sum()
+        if isinstance(other, Variable):  # unary table constraint (based on a range)
+            queue_in.append((self, other))
+            return True
+        if isinstance(other, PartialConstraint):
+            queue_in.append((self, other))
+            return True
+        if isinstance(other, Node):
+            other = _replace_node_in(other, self)
+            queue_in.append((self, other))
+            return True
+        return self.__contains__(other)
+
+    # curse(tuple, "__eq__", _tuple_eq)  # Not possible with the current version of forbidden fruit
+    # curse(list, "__getitem__", _list_getitem) # TODO: not working. why? because of forbiddenfruit?
+    curse(list, "__mul__", _list_mul)
+    # curse(list, "__rmul__", _list_rmul)
+    curse(tuple, "__contains__", _tuple_contains)
+    curse(list, "__contains__", _list_contains)
+    curse(set, "__contains__", _set_contains)
+    curse(range, "__contains__", _range_contains)
+    _prevent_specialization_of_contains()
+
+
+def _prevent_specialization_of_contains():
+    """
+    From Python 3.13, an instruction CONTAINS_OP (the operator 'in') is specialized once executed with a set or a frozenset (CONTAINS_OP_SET):
+    the membership is then computed directly by CPython, and the method __contains__ replaced above is no longer called (at the next iterations
+    of a loop, for example). An instruction observed with sys.monitoring (event INSTRUCTION) is never specialized, its adaptive counter being
+    paused: the instructions CONTAINS_OP of the code of the user (models, notebooks, ...), and only them, remain observed.
+    """
+    if sys.version_info < (3, 13):
+        return
+    monitoring = sys.monitoring
+    tool = next((t for t in (4, 3) if monitoring.get_tool(t) is None), None)
+    if tool is None:  # no identifier of tool available
+        return
+    events, contains_op = monitoring.events, dis.opmap["CONTAINS_OP"]
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep  # the directory of the package pycsp3
+    user_dirs = tuple(root + d + os.sep for d in ("tests", "problems"))
+    python_dirs = tuple({os.path.abspath(sysconfig.get_path(k)) + os.sep for k in ("stdlib", "platstdlib", "purelib", "platlib")})
+
+    def _user_code(code):  # code that is neither in the library PyCSP3 nor in the Python installation
+        name = code.co_filename
+        return not (name.startswith(root) and not name.startswith(user_dirs) or name.startswith(python_dirs))
+
+    def _on_start(code, offset):  # at its first start, a code object of the user is observed instruction by instruction
+        if _user_code(code):
+            monitoring.set_local_events(tool, code, events.INSTRUCTION)
+        return monitoring.DISABLE
+
+    def _on_instruction(code, offset):  # the observation is only kept for the instructions CONTAINS_OP
+        return None if code.co_code[offset] == contains_op else monitoring.DISABLE
+
+    monitoring.use_tool_id(tool, "pycsp3")
+    monitoring.register_callback(tool, events.PY_START, _on_start)
+    monitoring.register_callback(tool, events.INSTRUCTION, _on_instruction)
+    monitoring.set_events(tool, events.PY_START)
+    frame = sys._getframe(1)
+    while frame is not None:  # the code of the user already running (typically, the model) is observed now
+        if _user_code(frame.f_code):
+            monitoring.set_local_events(tool, frame.f_code, events.INSTRUCTION)
+        frame = frame.f_back
+
+
+class OpOverrider:
+    """
+    The object redefining the operators of Python (==, <, +, &, etc.) so that they build expressions on variables, as returned by protect().
+    Calling protect() disables the redefined operators, and calling execute() on the returned object reactivates them.
+
+    :example:
+        x = VarArray(size=3, dom=range(3))
+
+        # in protected mode, the two variables are simply compared (as Python objects)
+        print(protect().execute(x[0] == x[1]))  # False
+    """
+    activated = False
+
+    and_or_store = None
+
+    @staticmethod
+    def enable():
+        OpOverrider.activated = True
+
+        ListVar.__eq__ = OpOverrider.__eq__lv
+        ListVar.__ne__ = OpOverrider.__ne__lv
+        ListVar.__getitem__ = OpOverrider.__getitem__lv
+        ListInt.__getitem__ = OpOverrider.__getitem__li
+        # ListInt.__contains__ = OpOverrider.__contains__li
+
+        ECtr.__eq__ = EMetaCtr.__eq__ = Variable.__eq__ = Node.__eq__ = OpOverrider.__eq__
+        ECtr.__ne__ = EMetaCtr.__ne__ = Variable.__ne__ = Node.__ne__ = OpOverrider.__ne__
+        Variable.__lt__ = Node.__lt__ = OpOverrider.__lt__
+        Variable.__le__ = Node.__le__ = OpOverrider.__le__
+        Variable.__ge__ = Node.__ge__ = OpOverrider.__ge__
+        Variable.__gt__ = Node.__gt__ = OpOverrider.__gt__
+
+        Variable.__neg__ = Node.__neg__ = OpOverrider.__neg__
+        Variable.__add__ = Node.__add__ = OpOverrider.__add__
+        Variable.__radd__ = Node.__radd__ = OpOverrider.__radd__
+        Variable.__sub__ = Node.__sub__ = OpOverrider.__sub__
+        Variable.__rsub__ = Node.__rsub__ = OpOverrider.__rsub__
+        Variable.__mul__ = Node.__mul__ = OpOverrider.__mul__
+        Variable.__rmul__ = Node.__rmul__ = OpOverrider.__rmul__
+        Variable.__floordiv__ = Node.__floordiv__ = OpOverrider.__floordiv__
+        Variable.__rfloordiv__ = Node.__rfloordiv__ = OpOverrider.__rfloordiv__
+        Variable.__mod__ = Node.__mod__ = OpOverrider.__mod__
+        Variable.__rmod__ = Node.__rmod__ = OpOverrider.__rmod__
+        Variable.__pow__ = Node.__pow__ = OpOverrider.__pow__
+        Variable.__rpow__ = Node.__rpow__ = OpOverrider.__rpow__
+
+        ECtr.__and__ = EMetaCtr.__and__ = Variable.__and__ = Node.__and__ = OpOverrider.__and__
+        ECtr.__rand__ = EMetaCtr.__rand__ = Variable.__rand__ = Node.__rand__ = OpOverrider.__rand__
+        ECtr.__or__ = EMetaCtr.__or__ = Variable.__or__ = Node.__or__ = OpOverrider.__or__
+        ECtr.__ror__ = EMetaCtr.__ror__ = Variable.__ror__ = Node.__ror__ = OpOverrider.__ror__
+        ECtr.__invert__ = Node.__invert__ = OpOverrider.__invert__  # we keep __invert__ for Variable
+        ECtr.__xor__ = EMetaCtr.__xor__ = Variable.__xor__ = Node.__xor__ = OpOverrider.__xor__
+        ECtr.__rxor__ = EMetaCtr.__rxor__ = Variable.__rxor__ = Node.__rxor__ = OpOverrider.__rxor__
+        Variable.__rshift__ = Node.__rshift__ = OpOverrider.__rshift__  # TODO ECtr and EMetaCtr too?
+
+    @staticmethod
+    def disable():
+        OpOverrider.activated = False
+
+        ListVar.__eq__ = list.__eq__
+        ListVar.__ne__ = list.__ne__
+        ListVar.__getitem__ = list.__getitem__
+        ListInt.__getitem__ = list.__getitem__
+        # ListInt.__contains__ = list.__contains__
+
+        ECtr.__eq__ = EMetaCtr.__eq__ = Node.__eq__ = object.__eq__
+        Variable.__eq__ = Variable.eq__safe  # TODO are there other methods in the same situation?
+        ECtr.__ne__ = EMetaCtr.__ne__ = Variable.__ne__ = Node.__ne__ = object.__ne__
+        Variable.__lt__ = Node.__lt__ = object.__lt__
+        Variable.__le__ = Node.__le__ = object.__le__
+        Variable.__ge__ = Node.__ge__ = object.__ge__
+        Variable.__gt__ = Node.__gt__ = object.__gt__
+
+        Variable.__neg__ = Node.__neg__ = None
+        Variable.__add__ = Node.__add__ = None
+        Variable.__radd__ = Node.__radd__ = None
+        Variable.__sub__ = Node.__sub__ = None
+        Variable.__rsub__ = Node.__rsub__ = None
+        Variable.__mul__ = Node.__mul__ = None
+        Variable.__rmul__ = Node.__rmul__ = None
+        Variable.__floordiv__ = Node.__floordiv__ = None
+        Variable.__rfloordiv__ = Node.__rfloordiv__ = None
+        Variable.__mod__ = Node.__mod__ = None
+        Variable.__rmod__ = Node.__rmod__ = None
+        Variable.__pow__ = Node.__pow__ = None
+        Variable.__rpow__ = Node.__rpow__ = None
+
+        ECtr.__and__ = EMetaCtr.__and__ = Variable.__and__ = Node.__and__ = None
+        ECtr.__rand__ = EMetaCtr.__rand__ = Variable.__rand__ = Node.__rand__ = None
+        ECtr.__or__ = EMetaCtr.__or__ = Variable.__or__ = Node.__or__ = None
+        ECtr.__ror__ = EMetaCtr.__ror__ = Variable.__ror__ = Node.__ror__ = None
+        ECtr.__invert__ = Node.__invert__ = None  # we keep __invert__ for Variable
+        ECtr.__xor__ = EMetaCtr.__xor__ = Variable.__xor__ = Node.__xor__ = None
+        ECtr.__rxor__ = EMetaCtr.__rxor__ = Variable.__rxor__ = Node.__rxor__ = None
+        Variable.__rshift__ = Node.__rshift__ = None
+
+        return OpOverrider
+
+    @staticmethod
+    def eq_protected(v1, v2):
+        if isinstance(v1, list) and isinstance(v2, list):
+            return len(v1) == len(v2) and all(OpOverrider.eq_protected(v1[i], v2[i]) for i in range(len(v1)))
+        if type(v1) is not type(v2):
+            return False
+        if isinstance(v1, Variable):
+            return Variable.eq__safe(v1, v2)
+        if isinstance(v1, Node):
+            return Node.eq__safe(v1, v2)
+        return v1 == v2
+
+    @staticmethod
+    def execute(arg):
+        """
+        Reactivates the redefined operators (==, <, &, etc.), and returns the specified argument.
+        This method is meant to be chained with protect(), as in protect().execute(expr): expr is then evaluated while the operators are disabled.
+
+        :param arg: the value of the code executed in protected mode
+        :return: the specified argument
+        :example:
+            x = VarArray(size=3, dom=range(3))
+
+            # the operator == builds an expression, displayed as eq(x[0],x[1])
+            print(x[0] == x[1])
+
+            # in protected mode, the two variables are simply compared (as Python objects)
+            print(protect().execute(x[0] == x[1]))  # False
+        """
+        OpOverrider.enable()
+        return arg
+
+    @staticmethod
+    def project_recursive(t, indexes, dimension):
+        index = slice(None, None, None) if indexes[dimension] == ANY else indexes[dimension]
+        if isinstance(index, int):
+            if isinstance(t, list):
+                t = t[index]  # to keep the shape (dimensions), we need to do that
+            else:
+                return t
+        elif isinstance(index, slice):
+            t = list.__getitem__(t, index)
+        elif isinstance(index, list):
+            return cp_array([t[v] for v in index])
+        else:
+            raise TypeError(str(index) + " " + str(type(index)))
+        if isinstance(t, list) and dimension + 1 < len(indexes):
+            if not isinstance(index, int):
+                for i, element in enumerate(t):
+                    t[i] = OpOverrider.project_recursive(element, indexes, dimension + 1)
+            else:
+                t = OpOverrider.project_recursive(t, indexes, dimension + 1)
+        return t
+
+    def __neg__(self):
+        return self.cnt[0] if isinstance(self, Node) and self.type == TypeNode.NEG else Node.build(TypeNode.NEG, self)
+
+    def __add__(self, other, r_call=False):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, int):
+            if other == 0:
+                return self
+            if isinstance(self, Node) and self.type in (TypeNode.ADD, TypeNode.SUB) and self[-1].type == TypeNode.INT:
+                # a new node is built, since self may be used in other expressions
+                value = self[-1].cnt + (other if self.type == TypeNode.ADD else -other)
+                return self[0] if self.arity() == 2 and value == 0 else Node.build(self.type, *self.cnt[:-1], value)
+        if isinstance(other, ScalarProduct):
+            other = PartialConstraint(ConstraintSum(other.variables, other.coeffs, None))
+        if isinstance(other, PartialConstraint):
+            if isinstance(other.constraint, ConstraintSum) and isinstance(self, Node) and all(s.type == TypeNode.VAR for s in self.cnt):
+                if self.type == TypeNode.ADD:
+                    for s in self.cnt:
+                        other = other + s.cnt
+                    return other
+                if self.type == TypeNode.SUB:
+                    return other + self[0].cnt - self[1].cnt
+            return PartialConstraint.combine_partial_objects(self, TypeNode.ADD, other) if isinstance(other.constraint, ConstraintSum) else other + self
+        assert other is not None, "One argument is None (coming from an undefined variable from an array?)"
+        return Node.build(TypeNode.ADD, (self, other) if not r_call else (other, self))
+
+    def __radd__(self, other):
+        return self.__add__(other, r_call=True)
+
+    def __sub__(self, other):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, int):
+            if other == 0:
+                return self
+            if isinstance(self, Node) and self.type in (TypeNode.ADD, TypeNode.SUB) and self[-1].type == TypeNode.INT:
+                # a new node is built, since self may be used in other expressions
+                value = self[-1].cnt + (-other if self.type == TypeNode.ADD else other)
+                return self[0] if self.arity() == 2 and value == 0 else Node.build(self.type, *self.cnt[:-1], value)
+        if isinstance(other, ScalarProduct):
+            other = PartialConstraint(ConstraintSum(other.variables, other.coeffs, None))
+        if isinstance(other, PartialConstraint):
+            if isinstance(other.constraint, ConstraintSum) and isinstance(self, Node) and all(s.type == TypeNode.VAR for s in self.cnt):
+                if self.type == TypeNode.ADD:
+                    for s in self.cnt:
+                        other = other - s.cnt
+                    other.constraint.revert_coeffs()
+                    return other
+                if self.type == TypeNode.SUB:
+                    other = other - self[0].cnt + self[1].cnt
+                    other.constraint.revert_coeffs()
+                    return other
+            return PartialConstraint.combine_partial_objects(self, TypeNode.SUB, other) if isinstance(other.constraint, ConstraintSum) else -(other - self)
+        return Node.build(TypeNode.SUB, self, other)
+
+    def __rsub__(self, other):  # other - sub
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, int):
+            if other == 0:
+                return -self
+        return Node.build(TypeNode.SUB, other, self)
+
+    def __mul__(self, other, r_call=False):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, int):
+            if other == 0:
+                return 0  # ConstraintDummyConstant(0)
+            if other == 1:
+                return self
+        if isinstance(other, PartialConstraint):
+            other = auxiliary().replace_partial_constraint(other)
+        # if isinstance(other, int) and other == 0: return Node(TypeNode.INT, 0)
+        if isinstance(self, Node) and self.type == TypeNode.NEG and isinstance(self[0], Node) and self[0].type == TypeNode.MUL:
+            return Node.build(TypeNode.NEG, Node.build(TypeNode.MUL, *self[0].cnt, other))
+        if isinstance(other, Node) and other.type == TypeNode.NEG and isinstance(other[0], Node) and other[0].type == TypeNode.MUL:
+            return Node.build(TypeNode.NEG, Node.build(TypeNode.MUL, self, *other[0].cnt))
+        return Node.build(TypeNode.MUL, (self, other) if not r_call else (other, self))
+
+    def __rmul__(self, other):
+        return self.__mul__(other, r_call=True)
+
+    def __floordiv__(self, other):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, int):
+            if other == 1:
+                return self
+        return Node.build(TypeNode.DIV, self, other)
+
+    def __rfloordiv__(self, other):
+        return Node.build(TypeNode.DIV, other, self)
+
+    def __mod__(self, other):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(self, Variable) and isinstance(other, int) and 0 <= self.dom.smallest_value() and self.dom.greatest_value() < other:
+            return self
+        return Node.build(TypeNode.MOD, self, other)
+
+    def __rmod__(self, other):
+        return Node.build(TypeNode.MOD, other, self)
+
+    def __pow__(self, other):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        return Node.build(TypeNode.POW, self, other)
+
+    def __rpow__(self, other):  # other ** self
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        return Node.build(TypeNode.POW, other, self)
+
+    @staticmethod
+    def _replace(arg1, arg2):
+        if isinstance(arg1, PartialConstraint) and isinstance(arg2, Node):
+            return auxiliary().replace_partial_constraint(arg1), arg2
+        if isinstance(arg2, PartialConstraint) and isinstance(arg1, Node):
+            return arg1, auxiliary().replace_partial_constraint(arg2)
+        return arg1, arg2
+
+    def __lt__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self < other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if self is None or other is None:
+            return object.__lt__(self, other)
+        if isinstance(other, int) and other == 1 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+            return Node.build(TypeNode.EQ, self[0], self[1])
+        self, other = OpOverrider._replace(self, other)
+        return other.__gt__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.LT, self, other)
+
+    def __le__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self <= other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if self is None or other is None:
+            return object.__le__(self, other)
+        if isinstance(other, int) and other == 0 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+            return Node.build(TypeNode.EQ, self[0], self[1])
+        self, other = OpOverrider._replace(self, other)
+        return other.__ge__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.LE, self, other)
+
+    def __ge__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self >= other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if self is None or other is None:
+            return object.__ge__(self, other)
+        if isinstance(other, int) and other == 1 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+            return Node.build(TypeNode.NE, self[0], self[1])
+        self, other = OpOverrider._replace(self, other)
+        return other.__le__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.GE, self, other)
+
+    def __gt__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self > other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if self is None or other is None:
+            return object.__gt__(self, other)
+        if isinstance(other, int) and other == 0 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+            return Node.build(TypeNode.NE, self[0], self[1])
+        self, other = OpOverrider._replace(self, other)
+        return other.__lt__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.GT, self, other)
+
+    def __eq__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self == other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(self, Node) and self.type.is_predicate_operator() and isinstance(other,int) and other == 1:
+            return self
+        res = manage_global_indirection(self, other)
+        if res is None:
+            return functions.Iff(self, other, meta=True)
+        self, other = res
+        if self is None or other is None:  # we must not write None in (self,other) because recursive behaviour
+            return object.__eq__(self, other)
+        if isinstance(other, (tuple, list)):
+            other = other[0] if len(other) == 1 else functions.conjunction(other)
+
+        if isinstance(other, int):
+            if other == 1 and isinstance(self, Variable) and self.dom.is_binary():
+                return self
+            if other == 0 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+                return Node.build(TypeNode.EQ, self[0], self[1])
+
+        self, other = OpOverrider._replace(self, other)
+        # if isinstance(other, ConstraintDummyConstant):
+        #     other = other.val
+        return other.__eq__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.EQ, self, other)
+
+    def __ne__(self, other):
+        if OpOverrider.and_or_store is not None:
+            node, op = OpOverrider.and_or_store
+            OpOverrider.and_or_store = None
+            return Node.build(op, node, self != other)
+
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(self, Node) and self.type.is_predicate_operator() and isinstance(other,int) and other == 0:
+            return self
+        res = manage_global_indirection(self, other)
+        if res is None:
+            return functions.Xor(self, other, meta=True)  # TODO: is it always appropriate?
+        self, other = res
+        if self is None or other is None:
+            return object.__ne__(self, other)
+        if isinstance(other, (tuple, list)):
+            other = other[0] if len(other) == 1 else functions.conjunction(other)
+
+        if isinstance(other, int):
+            if other == 0 and isinstance(self, Variable) and self.dom.is_binary():
+                return self
+            if other == 0 and isinstance(self, Node) and self.type == TypeNode.DIST:  # we simplify the expression
+                return Node.build(TypeNode.NE, self[0], self[1])
+        self, other = OpOverrider._replace(self, other)
+        return other.__ne__(self) if isinstance(other, (PartialConstraint, ScalarProduct)) else Node.build(TypeNode.NE, self, other)
+
+    def __or__(self, other):
+        check_no_negated_membership((other,))
+        if isinstance(other, ConstraintDummyConstant):
+            assert other.val in (0, 1)
+            return self if other.val == 0 else ConstraintDummyConstant(1)
+        if isinstance(other, bool) and len(queue_in) == 0:
+            # TODO how to extend it (without second condition part) ? should we use an option -dont_combine_bool (pb with JapanEncoding)
+            return self if other is False else True
+        if isinstance(other, PartialConstraint):
+            other = auxiliary().replace_partial_constraint(other)
+            assert 0 <= other.dom.smallest_value() and other.dom.greatest_value() <= 1
+        res = manage_global_indirection(self, other)
+        if res is None:
+            return functions.Or(self, other, meta=True)
+        self, other = res
+        if self is None or other is None:
+            return object.__or__(self, other)
+        if isinstance(other, (tuple, list)):
+            other = other[0] if len(other) == 1 else functions.conjunction(other)
+        if isinstance(other, (tuple, list)):
+            return Node.disjunction(self, *other)
+        return Node.disjunction(self, other)
+
+    __ror__ = __or__
+
+    def __and__(self, other):
+        check_no_negated_membership((other,))
+        if isinstance(other, ConstraintDummyConstant):
+            assert other.val in (0, 1)
+            return self if other.val == 1 else ConstraintDummyConstant(0)
+        if isinstance(other, bool) and len(queue_in) == 0:
+            # TODO how to extend it (without second condition part) ? should we use an option -dont_combine_bool (pb with JapanEncoding)
+            return self if other is True else False
+        # if isinstance(other, bool):  # TODO should we keep it? or use an option -dont_combine_bool
+        #     return self if other is True else False
+        if isinstance(other, PartialConstraint):
+            other = auxiliary().replace_partial_constraint(other)
+            assert 0 <= other.dom.smallest_value() and other.dom.greatest_value() <= 1
+        res = manage_global_indirection(self, other)
+        if res is None:
+            return functions.And(self, other, meta=True)
+        self, other = res
+        assert self is not None and other is not None  # object.__and__(self, other) is not valid
+        return Node.conjunction(self, other)
+
+    __rand__ = __and__
+
+    def __invert__(self):
+        if isinstance(self, PartialConstraint):
+            x = auxiliary().replace_partial_constraint(self)
+            assert 0 <= x.dom.smallest_value() and x.dom.greatest_value() <= 1
+            self = x
+        if isinstance(self, ECtr):
+            gi = global_indirection(self.constraint)
+            if gi is None:
+                return functions.Not(self, meta=True)
+            self = gi
+        if isinstance(self, VariableInteger):
+            return Variable.__invert__(self)
+        if isinstance(self, Node) and self.type == TypeNode.NOT:  # ~(~x) is x
+            return self.cnt[0].cnt if self.cnt[0].type == TypeNode.VAR else self.cnt[0]
+        if isinstance(self, Node):  # we simplify when possible (while building new nodes, as the node may be shared)
+            if ~self.type is not None:
+                return Node(~self.type, self.cnt)
+            if self.type in (TypeNode.AND, TypeNode.OR) and all(~son.type is not None for son in self.cnt):
+                return Node(TypeNode.OR if self.type == TypeNode.AND else TypeNode.AND, [Node(~son.type, son.cnt) for son in self.cnt])
+        return Node.build(TypeNode.NOT, self)
+
+    def __xor__(self, other):
+        check_no_negated_membership((other,))
+        if isinstance(other, ConstraintDummyConstant):
+            assert other.val in (0, 1)
+            other = other.val
+        if isinstance(other, PartialConstraint):
+            other = auxiliary().replace_partial_constraint(other)
+            assert 0 <= other.dom.smallest_value() and other.dom.greatest_value() <= 1
+        res = manage_global_indirection(self, other)
+        if res is None:
+            return functions.Xor(self, other, meta=True)
+        self, other = res
+        assert self is not None and other is not None  # object.__xor__(self, other) is not valid
+        if isinstance(other, (tuple, list)):
+            other = other[0] if len(other) == 1 else functions.conjunction(other)
+        return Node.build(TypeNode.XOR, self, other)
+
+    __rxor__ = __xor__  # (xor being commutative), for an operand on the left that is not an object of PyCSP3 (as an integer)
+
+    def __rshift__(self, other):
+        return functions.imply(self, other)
+
+    @staticmethod
+    def __extract_vars_vals(self, other):
+        if is_1d_list(other):
+            n = len(other)
+            if is_matrix(self) and len(self) * len(self[0]) == n:
+                self = [v for row in self for v in row]
+            assert (is_1d_list(self) or is_1d_tuple(self)) and n == len(self)
+            indexes = [i for i in range(n) if self[i] is not None and other[i] is not None]
+            return [self[i] for i in indexes], [other[i] for i in indexes]
+        if is_matrix(other):
+            n, m = len(other), len(other[0])
+            assert is_matrix(self) and 0 < n == len(self) and 0 < m == len(self[0])
+            indexes = [(i, j) for i in range(n) for j in range(m) if self[i][j] is not None and other[i][j] is not None]
+            return [self[i][j] for i, j in indexes], [other[i][j] for i, j in indexes]
+        if is_cube(other):
+            n, m, p = len(other), len(other[0]), len(other[0][0])
+            assert is_cube(self) and 0 < n == len(self) and 0 < m == len(self[0]) and 0 < p == len(self[0][0])
+            indexes = [(i, j, k) for i in range(n) for j in range(m) for k in range(p) if self[i][j][k] is not None and other[i][j][k] is not None]
+            return [self[i][j][k] for i, j, k in indexes], [other[i][j][k] for i, j, k in indexes]
+        return None
+
+    def __eq__lv(self, other):  # lv for ListVar
+        if isinstance(self, tuple) and all(isinstance(v, Variable) for v in self):
+            self = ListVar(self)
+        if isinstance(other, int):
+            if len(self) == 0:
+                return []
+            if options.mini:
+                return [x == other for x in flatten(self)]
+            return ECtr(ConstraintInstantiation(flatten(self), other))
+        if isinstance(other, (tuple, range)):
+            other = list(other)
+        if isinstance(other, list):
+            if unique_type_in(other, int):
+                res = OpOverrider.__extract_vars_vals(self, other)
+                if res is not None:
+                    if options.mini:
+                        return [res[0][i] == res[1][i] for i in range(len(res[0]))]
+                    return ECtr(ConstraintInstantiation(res[0], res[1]))
+            if unique_type_in(other, Variable):
+                res = OpOverrider.__extract_vars_vals(self, other)
+                if res is not None:
+                    return [res[0][i] == res[1][i] for i in range(len(res[0]))]
+            # TODO other cases ?
+        return list.__eq__(self, other)
+
+    def __ne__lv(self, other):  # lv for ListVar
+        if isinstance(self, tuple) and all(isinstance(v, Variable) for v in self):
+            self = ListVar(self)
+        if isinstance(other, int):
+            return [] if len(self) == 0 else ECtr(ConstraintRefutation(flatten(self), other))  # ListCtr(x != other for x in flatten(self))
+        if isinstance(other, (tuple, range)):
+            other = list(other)
+        if isinstance(other, list):
+            if unique_type_in(other, int):
+                res = OpOverrider.__extract_vars_vals(self, other)
+                if res is not None:
+                    return not _set_contains({tuple(res[1])}, res[0])  # a call (and not 'in', whose instruction could be specialized from Python 3.13)
+            if unique_type_in(other, Variable):
+                res = OpOverrider.__extract_vars_vals(self, other)
+                if res is not None:
+                    if len(res) == 2 and isinstance(res[0], list) and isinstance(res[1], list) and len(res[0]) == 2 and len(res[1]) == 2:
+                        return (res[0][0] != res[1][0]) | (res[0][1] != res[1][1])
+                    return ECtr(ConstraintAllDifferentList(res, None))
+            # TODO other cases ?
+        return list.__ne__(self, other)
+
+    @staticmethod
+    def __getitem__shared_by_lv_and_li(array, indexes, *, lv):  # lv=True for ListVar, lv=False for ListInt
+
+        def __int_tuples_of_same_size(m):
+            if not isinstance(m, (tuple, list)) or len(m) == 0:
+                return -1
+            if all(isinstance(t, int) for t in m):
+                return 1
+            if not isinstance(m[0], (tuple, list)) or len(m[0]) == 0 or not all(isinstance(w, int) for w in m[0]):
+                return -1
+            k = len(m[0])
+            if all(isinstance(t, (tuple, list)) and len(t) == k and all(isinstance(w, int) for w in t) for t in m):
+                return k
+            return -1
+
+        if isinstance(indexes, str) and functions.var(indexes) is not None:
+            indexes = functions.var(indexes)
+        if isinstance(indexes, ConstraintDummyConstant):
+            indexes = indexes.val
+        elif isinstance(indexes, tuple) and any(isinstance(i, ConstraintDummyConstant) for i in indexes):
+            indexes = tuple(i.val if isinstance(i, ConstraintDummyConstant) else i for i in indexes)  # as in m[c, j]
+        if isinstance(indexes, int):
+            assert isinstance(array, list) and len(array) > 0
+            if indexes >= len(array):
+                error_if(options.dont_adjust_indexing, "Indexing problem " + str(indexes))
+                new_index = indexes % len(array)
+                s = "Auto-adjustment of array indexing: " + str(indexes) + " -> " + str(new_index) + " in " + str(list.__getitem__(array, new_index))
+                warning(s, "array_indexing_warning")
+                indexes = new_index
+            return list.__getitem__(array, indexes)
+        if isinstance(indexes, types.GeneratorType) or (isinstance(indexes, abc.Iterable) and not isinstance(indexes, list)):
+            indexes = tuple(indexes)
+        if isinstance(indexes, list):
+            return cp_array(array[v] for v in indexes)
+        if isinstance(indexes, range):  # (list, range)):
+            indexes = tuple(indexes)
+        if isinstance(indexes, tuple) and len(indexes) == 1:
+            indexes = indexes[0]
+        if isinstance(indexes, (set, frozenset)):
+            assert all(isinstance(v, int) for v in indexes)
+            indexes = sorted(list(indexes))  # this will be a selection
+        if isinstance(indexes, slice):
+            r = range(indexes.start or 0, indexes.stop or len(array), indexes.step or 1)
+            if r.stop > len(array):
+                s = "Auto-adjustment of array indexing from a slice " + str(indexes)
+                warning(s, "array_indexing_warning")
+                lst = [list.__getitem__(array, u) for u in [v % len(array) for v in r]]
+                return ListVar(lst) if lv else ListInt(lst)
+        # we check with the next statement if a selection of cells is expected
+        k = __int_tuples_of_same_size(indexes)
+        if k != -1:
+            assert 1 <= k <= 3  # for the moment
+            lst = None
+            if k == 1:
+                if is_1d_list(array):
+                    lst = [list.__getitem__(array, u) for u in indexes]
+            elif k == 2:
+                assert is_2d_list(array)
+                lst = [list.__getitem__(list.__getitem__(array, u), v) for u, v in indexes]
+            elif k == 3:
+                lst = [list.__getitem__(list.__getitem__(list.__getitem__(array, u), v), w) for u, v, w in indexes]
+            if lst is not None:
+                return ListVar(lst) if lv else ListInt(lst)
+            # if lv:
+            #     if is_1d_list(array, Variable) and is_1d_tuple(indexes, int):
+            #         return ListVar([list.__getitem__(array, v) for v in indexes])
+            #
+            #     if is_2d_list(array) and isinstance(indexes, (tuple, list)) and all(
+            #             isinstance(v, (tuple, list)) and len(v) == 2 and all(isinstance(w, int) for w in v) for v in indexes):
+            #         return ListVar([list.__getitem__(list.__getitem__(array, v), w) for v, w in indexes])
+            # else:
+            #     if is_1d_list(array, int) and is_1d_tuple(indexes, int):  # we can this way select arbitrary elements of the list
+            #         return ListInt(list.__getitem__(array, v) for v in indexes)
+            #     if is_2d_list(array) and isinstance(indexes, (tuple, list)) and all(
+            #             isinstance(v, (tuple, list)) and len(v) == 2 and all(isinstance(w, int) for w in v) for v in indexes):
+            #         return ListInt([list.__getitem__(list.__getitem__(array, v), w) for v, w in indexes])
+        if isinstance(indexes, tuple):
+            if len(indexes) == 0:
+                return ListVar([]) if lv else ListInt([])
+            if isinstance(indexes[0], int):
+                rest = indexes[1:]
+                return array[indexes[0]][rest[0] if len(rest) == 1 else rest]
+        if isinstance(indexes, PartialConstraint):
+            indexes = auxiliary().replace_partial_constraint(indexes)
+        elif isinstance(indexes, Node):
+            res = indexes.var_val_if_binary_type(TypeNode.ADD)
+            if res is not None and res[1] == 0:  # in case we had x+0 or 0+x, we replace by x
+                indexes = res[0]
+            else:
+                res = indexes.var_val_if_binary_type(TypeNode.MUL)
+                if res is not None and res[1] == 1:  # in case we had x*1 or 1*x, we replace by x
+                    indexes = res[0]
+                else:
+                    values = indexes.possible_values()
+                    n = len(array)  # note that we force the domain of the aux variable with the parameter values
+                    if not options.force_element_index:
+                        if isinstance(values, range):
+                            error_if(not( 0 <= values.start and values.stop <= n), "Problem with an index ; maybe -force_element_index is appropriate!")
+                        else:
+                            assert is_1d_list(values, int) and len(values) > 0 and 0 <= values[0] and values[-1] < n
+                    indexes = auxiliary().replace_node(indexes, values=range(n))
+        if isinstance(indexes, Variable):
+            if indexes.dom.is_infinite():
+                indexes.dom = Domain(range(len(array)))
+            if isinstance(array, ListInt) and (is_1d_list(array, int) or is_2d_list(array, int)):
+                if all(array[0] == t for t in array):  # all integers (or all rows) are identical
+                    # with identical integers, c[i] is a constant; for example, with c = [2, 2, 2]:
+                    #  - c[i] == 2 calls ConstraintDummyConstant.__eq__(2) and gives ConstraintDummyConstant(1): always true, no constraint is posted
+                    #  - c[i] == 3 gives ConstraintDummyConstant(0): always false, the model is unsatisfiable
+                    #  - c[i] == v builds the node eq(v,2)
+                    #  - minimize(c[i]) gives the message of #221: "The objective is the constant 2"
+                    return ConstraintDummyConstant(array[0]) if isinstance(array[0], int) else array[0]
+            return PartialConstraint(ConstraintElement(array, index=indexes))
+        if isinstance(indexes, tuple):
+            assert len(indexes) > 1
+            if any(isinstance(i, (Variable, Node, PartialConstraint, ECtr)) for i in indexes):  # this must be a constraint Element or Element-Matrix
+                assert is_matrix(array) and len(indexes) == 2, "A matrix is expected, with two indexes" + str(array) + " " + str(indexes)
+                n, m = len(array), max(len(row) for row in array)
+                index0 = auxiliary().replace_partial_constraint_and_constraint_with_condition_and_possibly_node(indexes[0], node_too=True, values=range(n))
+                index1 = auxiliary().replace_partial_constraint_and_constraint_with_condition_and_possibly_node(indexes[1], node_too=True, values=range(m))
+                if all(isinstance(i, Variable) for i in (index0, index1)):
+                    if is_2d_list(array, int):
+                        if all(array[0] == t for t in array):  # because all rows are identical, we keep only one dimension
+                            return array[0][index1]
+                    return PartialConstraint(ConstraintElementMatrix(array, index0, index1))
+                if isinstance(index0, Variable) and isinstance(index1, int):
+                    return PartialConstraint(ConstraintElement(array[:, index1], index=index0))
+                if isinstance(index0, int) and isinstance(index1, Variable):
+                    return PartialConstraint(ConstraintElement(array[index0], index=index1))
+                assert False
+            # indexes = auxiliary().replace_nodes_and_partial_constraints(list(indexes), nodes_too=True)
+            result = OpOverrider.project_recursive(array, indexes, 0)
+            try:
+                # TODO for lv, are sublists also guaranteed to be ListVar? and for li, should we return a ListInt instead of a ListVar?
+                return ListInt(result) if is_1d_list(result, int) else ListVar(result)
+            except TypeError:
+                return result
+        result = list.__getitem__(array, indexes)
+        try:
+            return ListVar(result) if lv else ListInt(result)
+        except TypeError:
+            return result
+
+    def __getitem__lv(self, indexes):  # lv for ListVar
+        return OpOverrider.__getitem__shared_by_lv_and_li(self, indexes, lv=True)
+
+    def __getitem__li(self, indexes):  # li for ListInt
+        return OpOverrider.__getitem__shared_by_lv_and_li(self, indexes, lv=False)
+
+
+class ListInt(list):
+    """
+    A list (possibly multi-dimensional) of integers, as returned by cp_array() or obtained when loading data.
+    Contrary to a Python list, it can be indexed by a variable, which gives a constraint Element, as in t[i] == v,
+    and it can be multiplied by a list of variables, which gives a weighted sum, as in t * x.
+
+    :example:
+        # when data are loaded (e.g., with -data), the lists of integers are automatically of type ListInt
+        t = cp_array([3, 5, 7])
+        print(type(t).__name__)  # ListInt
+
+        i = Var(range(3))
+        v = Var(range(10))
+
+        satisfy(
+           # v is the value of t at index i
+           t[i] == v
+        )
+
+        # a solution: i=0, v=3
+    """
+
+    def __init__(self, integers):
+        super().__init__(integers)  # self.extend(integers)
+
+    def __getslice__(self, i, j):
+        return ListInt(super().__getslice__(i, j))
+
+    def __add__(self, other):
+        return ListInt(super().__add__(other))
+
+    def __mul__(self, other):
+        if is_1d_list(self, int) and is_1d_list(other, int):
+            assert len(self) == len(other)
+            return sum(self[i] * other[i] for i in range(len(self)))
+        if is_matrix(self):
+            assert is_matrix(other) and len(self) == len(other) and len(self[0]) == len(other[0])
+            t1, t2 = zip(
+                *[(self[i][j], other[i][j]) for i in range(len(self)) for j in range(len(self[0])) if self[i][j] is not None and other[i][j] is not None])
+            assert is_containing(t2, (Variable, Node))
+            return ScalarProduct(list(t2), list(t1))
+        if is_containing(flatten(other), (Variable, Node)):
+            if len(self) == 1:
+                if isinstance(other, Variable):
+                    return self[0] * other
+                if isinstance(other, (tuple, list)) and len(other) == 1:
+                    return self[0] * other[0]
+            return ScalarProduct(other, self)
+        assert is_containing(self, (Variable, Node))
+        return ScalarProduct(self, other)
+
+    def __rmul__(self, other):
+        return ListInt.__mul__(other, self)
+
+    def __contains__(self, other):
+        if isinstance(other, (PartialConstraint, ConstraintDummyConstant)):  # a constant is evaluated when the constraint is posted
+            queue_in.append((list(self), other))
+            return True
+        if len(self) == 0 and isinstance(other, Variable):
+            queue_in.append((list(self), other))
+            return False
+        if is_containing(other, Variable) and len(self) > 0:
+            if isinstance(self[0], (tuple, int)):
+                queue_in.append((self, other))
+                return True
+            if isinstance(other, (list, tuple)) and isinstance(self[0], list):
+                queue_in.append(([tuple(t) for t in self], other))
+                return True
+                # error("It seems that you build tables whose elements are lists instead of tuples: " + str(other) + " in " + str(self))
+        return list.__contains__(self, other)
+
+    def __str__(self):
+        return structured_list(self)
+
+
+class ListVar(list):
+    """
+    A list (possibly multi-dimensional) of variables, as returned by VarArray() or cp_array().
+    Contrary to a Python list, it can be indexed by a variable, which gives a constraint Element, as in x[i] == 2,
+    and it can be compared to another list, which gives a lexicographic constraint, as in x <= y.
+    After solving, its field values gives the values of its variables in the last found solution.
+    For a two-dimensional list, the methods at_border(), around(), beside() and cross() give the neighbourhood of a cell.
+
+    :example:
+        x = VarArray(size=3, dom=range(3))
+        y = VarArray(size=3, dom=range(3))
+        i = Var(range(3))
+
+        satisfy(
+           # the value of x at index i is 2
+           x[i] == 2,
+
+           # x is lexicographically less than or equal to y
+           x <= y
+        )
+    """
+
+    # def __new__(self, variables):  # if we subclass tuple instead of list (while removing __init__)
+    #     return super().__new__(ListVar, variables)
+
+    def __init__(self, variables=None):
+        super().__init__([] if variables is None else variables)
+        self.values = None
+
+    def __getslice__(self, i, j):  # TODO using getitem instead? as for ListCtr?
+        return ListVar(super().__getslice__(i, j))
+
+    def __add__(self, other):
+        return ListVar(super().__add__(other))
+
+    def __radd__(self, other):
+        return ListVar(list.__add__(other, self))
+
+    def __mul__(self, other):
+        if is_matrix(self):
+            assert is_matrix(other) and len(self) == len(other) and len(self[0]) == len(other[0])
+            t1, t2 = zip(
+                *[(self[i][j], other[i][j]) for i in range(len(self)) for j in range(len(self[0])) if self[i][j] is not None and other[i][j] is not None])
+            assert is_containing(t1, (Variable, Node))
+            return ScalarProduct(list(t1), list(t2))
+        assert is_containing(self, (Variable, Node))  # Node possible ?
+        if isinstance(other, int):
+            other = [other] * len(self)
+        return ScalarProduct(self, list(other) if isinstance(other, (tuple, range, types.GeneratorType)) else other)
+
+    __rmul__ = __mul__
+
+    def __contains__(self, other):
+        if isinstance(other, ConstraintDummyConstant):
+            other = other.val
+        if isinstance(other, (int, Variable)):  # member constraint
+            queue_in.append((self, other))
+            return True
+        return list.__contains__(self, other)
+
+    def _post_lex(self, other, f, strict):
+        l1, l2 = flatten(self), flatten(other)
+        assert len(l1) == len(l2) and (is_1d_list(l1, Variable) and is_1d_list(l2, Variable))  # or (is_2d_list(self, Variable) and is_2d_list(other, Variable))
+        return f(l1, l2, strict=strict)
+
+    def __lt__(self, other):
+        return self._post_lex(other, functions.LexIncreasing, True)
+
+    def __le__(self, other):
+        return self._post_lex(other, functions.LexIncreasing, False)
+
+    def __ge__(self, other):
+        return self._post_lex(other, functions.LexDecreasing, False)
+
+    def __gt__(self, other):
+        return self._post_lex(other, functions.LexDecreasing, True)
+
+    def _dimensions(self, i, j):  # returns the numbers of rows and columns, after having checked that (i, j) is a cell
+        assert is_matrix(self), "calling this function should be made on a 2-dimensional array"
+        n = len(self)
+        error_if(not isinstance(i, int) or not 0 <= i < n, "The index " + str(i) + " is not the index of a row of the array (of size " + str(n) + ")")
+        m = len(list.__getitem__(self, i))  # the list is directly accessed (no auto-adjustment of indexing)
+        error_if(not isinstance(j, int) or not 0 <= j < m, "The index " + str(j) + " is not the index of a column of the array (of size " + str(m) + ")")
+        return n, m
+
+    def at_border(self, i, j):
+        """
+        Returns True if the cell at the specified indexes is on the border of this two-dimensional list, i.e., in its first or last row or column.
+
+        :param i: the index of a row
+        :param j: the index of a column
+        :return: True if the cell (i, j) is on the border
+        :example:
+            x = VarArray(size=[4, 4], dom=range(2))
+
+            satisfy(
+               # the cells on the border are set to 0
+               x[i][j] == 0 for i in range(4) for j in range(4) if x.at_border(i, j)
+            )
+        """
+        n, m = self._dimensions(i, j)
+        return i in {0, n - 1} or j in {0, m - 1}
+
+    def around(self, i, j):
+        """
+        Returns the variables of the (up to 8) cells adjacent to the cell at the specified indexes, orthogonally or diagonally.
+
+        :param i: the index of a row
+        :param j: the index of a column
+        :return: a list with the variables of the cells around the cell (i, j)
+        :example:
+            x = VarArray(size=[3, 3], dom=range(2))
+            print(x.around(0, 0))  # [x[0][1], x[1][0], x[1][1]]
+
+            satisfy(
+               # the central cell has exactly 3 neighbours set to 1 (as in the game of life)
+               Sum(x.around(1, 1)) == 3
+            )
+        """
+        n, m = self._dimensions(i, j)
+        return ListVar([self[i + k][j + p] for k in [-1, 0, 1] for p in [-1, 0, 1] if 0 <= i + k < n and 0 <= j + p < m and (k, p) != (0, 0)])
+
+    def beside(self, i, j):
+        """
+        Returns the variables of the (up to 4) cells orthogonally adjacent to the cell at the specified indexes: left, right, up and down.
+
+        :param i: the index of a row
+        :param j: the index of a column
+        :return: a list with the variables of the cells beside the cell (i, j)
+        :example:
+            x = VarArray(size=[3, 3], dom=range(2))
+            print(x.beside(0, 0))  # [x[0][1], x[1][0]]
+
+            satisfy(
+               # exactly one of the 4 neighbours of the central cell is set to 1
+               ExactlyOne(x.beside(1, 1), value=1)
+            )
+        """
+        n, m = self._dimensions(i, j)
+        return ListVar([self[k][l] for k, l in [(i, j - 1), (i, j + 1), (i - 1, j), (i + 1, j)] if 0 <= k < n and 0 <= l < m])
+
+    def cross(self, i, j):
+        """
+        Returns the variable of the cell at the specified indexes, followed by the variables of the (up to 4) cells orthogonally adjacent to it:
+        left, right, up and down.
+
+        :param i: the index of a row
+        :param j: the index of a column
+        :return: a list with the variables of the cell (i, j) and of the cells beside it
+        :example:
+            x = VarArray(size=[3, 3], dom=range(2))
+            print(x.cross(0, 0))  # [x[0][0], x[0][1], x[1][0]]
+
+            satisfy(
+               # the central cell and its 4 neighbours are not all set to 1
+               Sum(x.cross(1, 1)) <= 4
+            )
+        """
+        n, m = self._dimensions(i, j)
+        return ListVar([self[i][j]] + [self[k][l] for k, l in [(i, j - 1), (i, j + 1), (i - 1, j), (i + 1, j)] if 0 <= k < n and 0 <= l < m])
+
+    def __str__(self):
+        return structured_list(self)
+
+
+class ListMultipleVar(list):
+
+    @staticmethod
+    def __rec(t, field):
+        if isinstance(t, ListMultipleVar):
+            return cp_array(ListMultipleVar.__rec(v, field) for v in t)
+        return getattr(t, field)
+
+    def __init__(self, multiple_variables=None):
+        super().__init__(multiple_variables)
+        self.field_names = None
+
+    def add_fields(self, field_names):
+        self.field_names = field_names
+        for name in field_names:
+            setattr(self, name, ListMultipleVar.__rec(self, name))
+        return self
+
+    def __getitem__(self, indexes):
+        if isinstance(indexes, Variable):
+            return cp_array([getattr(self, name)[indexes] for name in self.field_names])  # keep cp_array (and not ListVar)
+        return list.__getitem__(self, indexes)
+
+
+class ListCtr(list):  # currently, mainly introduced for __str__ when calling posted()
+
+    def __init__(self, ectrs):
+        super().__init__(ectrs)
+
+    def __getitem__(self, k):
+        return ListCtr(super().__getitem__(k)) if isinstance(k, slice) else super().__getitem__(k)
+
+    def __str__(self):
+        return "\n".join(str(e) for e in self)
+
+
+class ListMix(list):  # list that may contain together integers, variables and nodes
+
+    def __init__(self, elements):
+        super().__init__(elements)
+        assert all(isinstance(v, (int, Variable, Node)) for v in elements)
+
+    def __getitem__(self, k):
+        # for the moment, we do not use caching when replacing integers or nodes
+        if isinstance(k, Variable):  # we transform into a list of variables to be able to handle a constraint Element
+            return ListVar([v if isinstance(v, Variable) else auxiliary().replace_int(v) if isinstance(v, int) else auxiliary().replace_node(v) for v in self])[
+                k]
+        return super().__getitem__(k)
+
+    def __str__(self):
+        return structured_list(self)
+
+
+test = False
+
+
+def convert_to_namedtuples(obj):
+    def valid_field_name(k):  # as required by namedtuple(): an identifier, not a keyword, not starting with '_'
+        return isinstance(k, str) and k.isidentifier() and not keyword.iskeyword(k) and not k.startswith('_')
+
+    def with_only_valid_field_names(obj):
+        if isinstance(obj, dict):
+            if any(not valid_field_name(k) for k in obj.keys()):
+                return False
+            return all(with_only_valid_field_names(v) for v in obj.values())
+        if isinstance(obj, (int, str)):
+            return True
+        try:
+            iter(obj)
+        except TypeError:  # not iterable
+            return True
+        else:  # iterable
+            return all(with_only_valid_field_names(v) for v in obj)
+
+    def recursive_convert_to_namedtuples(obj):
+        if not hasattr(recursive_convert_to_namedtuples, "cnt"):
+            recursive_convert_to_namedtuples.cnt = 0
+        if isinstance(obj, tuple):
+            obj = list(obj)  # because if data come from a text file (and not from a JSON file), we have different structures, which leads to problems
+        if isinstance(obj, list):
+            if len(obj) == 0:
+                return obj
+            if is_1d_list(obj, int):
+                return ListInt(obj)
+            if is_1d_list(obj, Variable):
+                return ListVar(obj)
+            if is_1d_list(obj, dict):
+                if test:
+                    return [AttributeDict(recursive_convert_to_namedtuples(v)) for v in obj]
+                keys = list(obj[0].keys())
+                other = next((d for d in obj if set(d.keys()) != set(keys)), None)
+                if other is not None:
+                    error("The objects of a list must have the same keys, which is not the case of an object with keys " + str(keys)
+                          + " and an object with keys " + str(list(other.keys())))
+                nt = namedtuple("nt" + str(recursive_convert_to_namedtuples.cnt), keys)
+                recursive_convert_to_namedtuples.cnt += 1
+                # values given by name, the keys of an object being possibly in another order than those of the first object
+                return [nt(**{k: recursive_convert_to_namedtuples(v) for (k, v) in d.items()}) for d in obj]
+            t = [recursive_convert_to_namedtuples(v) for v in obj]
+            return ListInt(t) if isinstance(t[0], ListInt) else ListVar(t) if isinstance(t[0], ListVar) else t
+        if isinstance(obj, dict):
+            if test:
+                return AttributeDict({k: recursive_convert_to_namedtuples(v) for (k, v) in obj.items()})
+            nt = namedtuple("nt" + str(recursive_convert_to_namedtuples.cnt), obj.keys())
+            recursive_convert_to_namedtuples.cnt += 1
+            return nt(*(recursive_convert_to_namedtuples(v) for (k, v) in obj.items()))
+        return obj
+
+    if options.data_sober:
+        return obj
+    if not with_only_valid_field_names(obj):
+        warning("some key of some dictionary involved in the data cannot be a field name of a named tuple (not an identifier, a Python keyword, "
+                + "or starting with '_'), so no conversion to named tuples is performed\n")
+        return obj  # not possible to make the conversion in that case
+    return recursive_convert_to_namedtuples(obj)
+
+
+def is_namedtuple(obj):  # imperfect way of checking, but must be enough for our use (when JSON dumping Compilation.data)
+    t = type(obj)
+    if len(t.__bases__) != 1 or t.__bases__[0] != tuple:
+        return False
+    fields = getattr(t, '_fields', None)
+    return isinstance(fields, tuple) and all(type(field) is str for field in fields)
+
+
+def _list(t, mode):
+    return ListVar(v for v in t) if mode == 0 else ListInt(v for v in t) if mode == 1 else list(v for v in t)
+
+
+def rows(m):
+    """
+    Returns a list with the rows of the specified matrix
+
+    :param m: a matrix (i.e. a two-dimensional list)
+    :return: the matrix (possibly after converting its type)
+    :example:
+        x = VarArray(size=[3, 3], dom=range(3))
+        satisfy(AllDifferent(row) for row in rows(x))
+    """
+    assert is_matrix(m)
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    return _list((row for row in m), mode)
+
+
+def columns(m):
+    """
+    Returns the transpose matrix of the specified matrix
+
+    :param m: a matrix (i.e. a two-dimensional list)
+    :return: the transpose matrix
+    :example:
+        x = VarArray(size=[3, 3], dom=range(3))
+        satisfy(AllDifferent(col) for col in columns(x))
+    """
+    assert is_matrix(m)
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    return _list((_list((row[j] for row in m), mode) for j in range(len(m[0]))), mode)
+
+
+def ring(matrix, k=0):
+    """
+    Returns the kth ring of the specified matrix
+
+    :param matrix: a matrix (i.e. a two-dimensional list)
+    :param k: the index of the ring (from the outside towards the inside, starting at 0)
+    :return: the list of variables forming the kth ring of the specified matrix
+    :example:
+        x = VarArray(size=[4, 4], dom=range(4))
+        satisfy(AllDifferent(ring(x, 0)))
+    """
+    assert is_matrix(matrix) and isinstance(k, int) and k < min(len(matrix), len(matrix[0])) // 2
+    n, m = len(matrix), len(matrix[0])
+    top = matrix[k, k:m - k]
+    left = matrix[k + 1:-k - 1, m - k - 1]
+    bot = [matrix[n - k - 1][j] for j in range(m - k - 1, k - 1, -1)]
+    right = [matrix[j][k] for j in range(n - k - 2, k, -1)]
+    mode = 0 if is_matrix(matrix, Variable) else 1 if is_matrix(matrix, int) else 2
+    return _list(top + left + bot + right, mode)
+
+
+def diagonal_down(m, i=-1, j=-1, check=True):
+    """
+    Returns the main downward diagonal of the specified square matrix, or the one starting at cell (i, j) when i and j are specified.
+    A downward diagonal goes from top-left to bottom-right; when only i is specified, a broken diagonal (wrapping around the matrix) is returned.
+
+    :param m: a matrix (i.e. a two-dimensional list)
+    :param i: index of row (possibly -1)
+    :param j: index of column (possibly -1)
+    :param check: true when the structure of the matrix must be controlled
+    :return: the main downward diagonal (or another stipulated downward diagonal)
+    :example:
+        x = VarArray(size=[3, 3], dom=range(3))
+        satisfy(AllDifferent(diagonal_down(x)))
+    """
+    if check is True:
+        assert is_square_matrix(m), "The specified first parameter must be a square matrix."
+    if i == -1 and j == -1:
+        return diagonal_down(m, 0, 0, False)
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    if j == -1:
+        return _list((m[k][len(m) - (i - k) if k < i else k - i] for k in range(len(m))), mode)
+    return _list((m[i + k][j + k] for k in range(len(m) - max(i, j))), mode)
+
+
+def diagonals_down(m, *, broken=False):
+    """
+    Returns the list of downward diagonals of the specified matrix
+
+    :param m: a matrix (i.e. a two-dimensional list)
+    :param broken: true when broken diagonals must be completed
+    :return: the list of downward diagonals
+    :example:
+        x = VarArray(size=[3, 3], dom=range(3))
+        satisfy(AllDifferent(d) for d in diagonals_down(x))
+    """
+    assert is_square_matrix(m), "The specified first parameter must be a square matrix."
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    if broken:
+        return _list((diagonal_down(m, i, -1, False) for i in range(len(m))), mode)
+    return _list((diagonal_down(m, i, 0, False) for i in reversed(range(len(m) - 1))), mode) + \
+        _list((diagonal_down(m, 0, j, False) for j in range(1, len(m) - 1)), mode)
+
+
+def diagonal_up(m, i=-1, j=-1, check=True):
+    """
+    Returns the main upward diagonal of the specified square matrix, or the one starting at cell (i, j) when i and j are specified.
+    An upward diagonal goes from bottom-left to top-right; when only i is specified, a broken diagonal (wrapping around the matrix) is returned.
+
+    :param m: a matrix (i.e. a two-dimensional list)
+    :param i: index of row (possibly -1)
+    :param j: index of column (possibly -1)
+    :param check: true when the structure of the matrix must be controlled
+    :return: the main upward diagonal (or another stipulated upward diagonal)
+    :example:
+        x = VarArray(size=[3, 3], dom=range(3))
+        satisfy(AllDifferent(diagonal_up(x)))
+    """
+    if check is True:
+        assert is_square_matrix(m), "The specified first parameter must be a square matrix."
+    if i == -1 and j == -1:
+        return diagonal_up(m, len(m) - 1, 0, False)
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    if j == -1:
+        return _list((m[k][len(m) - i - k - 1 if k < len(m) - i else 2 * len(m) - i - k - 1] for k in range(len(m))), mode)
+    return _list((m[i - k][j + k] for k in range(min(i + 1, len(m) - j))), mode)
+
+
+def diagonals_up(m, *, broken=False):
+    """
+      Returns the list of upward diagonals of the specified matrix
+
+      :param m: a matrix (i.e. a two-dimensional list)
+      :param broken: true when broken diagonals must be completed
+      :return: the list of upward diagonals
+      :example:
+          x = VarArray(size=[3, 3], dom=range(3))
+          satisfy(AllDifferent(d) for d in diagonals_up(x))
+      """
+    assert is_square_matrix(m), "The specified first parameter must be a square matrix."
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    if broken:
+        return _list((diagonal_up(m, i, -1, False) for i in range(len(m))), mode)
+    return _list((diagonal_up(m, i, 0, False) for i in range(1, len(m))), mode) + \
+        _list((diagonal_up(m, len(m) - 1, j, False) for j in range(1, len(m) - 1)), mode)
+
+
+def diagonals(m):
+    """
+      Returns a list with the two main diagonals of the specified matrix
+
+      :param m: a matrix (i.e. a two-dimensional list)
+      :return: a list with the two main diagonals
+      :example:
+          x = VarArray(size=[3, 3], dom=range(3))
+          satisfy(AllDifferent(d) for d in diagonals(x))
+      """
+    assert is_square_matrix(m), "The specified first parameter must be a square matrix."
+    mode = 0 if is_matrix(m, Variable) else 1 if is_matrix(m, int) else 2
+    return _list((diagonal_down(m), diagonal_up(m)), mode)
+
+
+def cp_array(*t):
+    """
+    Converts the specified list into a list that can be indexed by a variable, as in cp_array(t)[x] (constraint Element).
+    A list of integers becomes a ListInt, a list of variables becomes a ListVar, and any other list is returned unchanged.
+
+    :param t: a list (of any dimension)
+    :return: the same list, possibly converted into one of the two more specific types ListInt and ListVar
+    :example:
+        x = VarArray(size=3, dom=range(3))
+        t = cp_array([2, 0, 1])
+        satisfy(t[x[0]] == 1)
+    """
+    if len(t) == 1:
+        t = t[0]
+    if isinstance(t, (tuple, set, frozenset, zip, types.GeneratorType)):
+        t = list(t)
+    assert isinstance(t, list)
+    if len(t) == 0:
+        return ListInt([])
+    if isinstance(t[0], (tuple, list, types.GeneratorType)):
+        assert all(isinstance(t, (tuple, list, types.GeneratorType)) for t in t)
+        res = [cp_array(t) for t in t]
+        if all(len(t) == 0 or isinstance(t, ListInt) for t in res):
+            return ListInt(res)
+        assert all(len(t) == 0 or isinstance(t, ListVar) for t in res)
+        return ListVar(res)
+    for i, e in enumerate(t):
+        if isinstance(e, PartialConstraint):
+            t[i] = auxiliary().replace_partial_constraint(e)
+        elif isinstance(e, ScalarProduct):
+            t[i] = auxiliary().replace_partial_constraint(PartialConstraint(ConstraintSum(e.variables, e.coeffs, None)))
+    typ = unique_type_in(t)
+    if typ is int:
+        return ListInt(t)
+    if typ in (Variable, VariableInteger):
+        return ListVar(t)
+    if typ is ECtr:  # TODO: is it the right type?
+        return ListCtr(t)
+    if all(isinstance(v, (int, Variable, Node)) for v in t):
+        return ListMix(t)
+    return t
+    # else:
+    #     return l  # raise NotImplemented
+
+# def to_special_list(t):
+#     assert is_1d_list(t)
+#     if is_containing(t, (Variable, type(None))):
+#         return ListVar(t)
+#     if is_containing(t, (int, type(None))):
+#         return ListInt(t)
+#     return t

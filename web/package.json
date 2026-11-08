@@ -1,0 +1,7 @@
+{
+  "name": "cs3263-pathway-web",
+  "private": true,
+  "description": "DOM-level regression checks for the buildless planner frontend",
+  "scripts": {"test": "node --test tests/frontend.test.cjs"},
+  "devDependencies": {"jsdom": "^27.0.0"}
+}

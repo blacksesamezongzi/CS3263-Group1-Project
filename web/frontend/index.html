@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A constraint-based course planner for NUS Computer Science students.">
+  <title>Pathway · NUS CS course planner</title>
+  <link rel="stylesheet" href="/static/style.css?v=4">
+  <script type="module" src="/static/app.js?v=4"></script>
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><span class="ambient-blue"></span><span class="ambient-gold"></span><span class="ambient-blue-small"></span></div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Pathway home"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 44 44"><path d="M8 11h10c4 0 6 3 6 6v17H14c-4 0-6-2-6-5V11Z" fill="currentColor"/><path d="M36 11H26c-4 0-6 3-6 6v17h10c4 0 6-2 6-5V11Z" fill="#F5B52B"/><path d="M22 18v16" stroke="white" stroke-width="2"/><path d="M12 17h4m-4 5h4" stroke="white" stroke-width="2" stroke-linecap="round"/></svg></span>pathway<span class="brand-tag">NUS CS</span></a>
+    <nav aria-label="Main"><a class="nav-active" href="#workspace">Course planner</a><a href="#study-plan">My study plan</a><button id="browse-courses" class="nav-link">Course catalogue</button></nav>
+    <span class="project-badge"><span class="status-dot"></span> CS3263 · Group 1</span>
+  </header>
+  <main>
+    <section class="intro">
+      <div><p class="eyebrow">A LITTLE STRUCTURE. A LOT OF POSSIBILITY.</p><h1>Your degree, your direction<span>.</span></h1><p class="intro-copy">Turn requirements and personal preferences into a course plan that fits you.</p></div>
+      <div class="cohort"><span class="cohort-symbol">⌘</span><div><strong>Computer Science</strong><small>National University of Singapore</small></div></div>
+    </section>
+    <div class="steps" aria-label="Planning workflow"><span><b>01</b> Set your constraints</span><i></i><span><b>02</b> Tell us what matters</span><i></i><span><b>03</b> Build your plan</span><span class="save-status" id="save-status">Saved on this browser</span></div>
+    <div id="boot-error" class="notice error" role="alert" hidden><span id="boot-error-message"></span> <button class="secondary" id="retry-init">Retry connection</button></div>
+    <section class="workspace" id="workspace">
+      <div class="constraints panel">
+        <div class="panel-heading"><div><div class="section-label">THE GROUND RULES</div><h2>Your constraints <span id="constraint-count" class="count">0</span></h2></div><button class="text-button" id="reset"><span aria-hidden="true">↺</span> Reset defaults</button></div>
+        <p class="panel-subtitle">Keep what matters. Remove what doesn't. Every card shapes your plan.</p>
+        <div id="academic-rule-notice" class="notice error" hidden><span>Foundation or prerequisite rules are missing. Results may be exploratory previews; invalid academic plans cannot be exported.</span> <button id="restore-academic" class="secondary">Restore core & prerequisites</button></div>
+        <div class="tabs" role="tablist" aria-label="Constraint categories"><button role="tab" id="tab-hard" aria-selected="true" data-filter="hard">Requirements <span id="hard-count">0</span></button><button role="tab" id="tab-soft" aria-selected="false" data-filter="soft">Preferences <span id="soft-count">0</span></button><button class="add-constraint" id="add-constraint">＋ Add constraint</button></div>
+        <div id="constraint-list" class="constraint-grid" role="tabpanel" aria-labelledby="tab-hard"></div>
+        <p class="constraint-note"><span>ⓘ</span> “Hard” rules must hold. Preferences guide the search and may be unmet.</p>
+
+      </div>
+      <aside class="chat panel" aria-labelledby="chat-title">
+        <div class="chat-heading"><div class="assistant-mark">✳</div><div><h2 id="chat-title">Make it yours</h2><p>Your course-planning assistant</p></div><span class="ai-badge">AI</span></div>
+        <div class="model-status" id="model-status"><span class="status-dot"></span> Checking SoCLaaS connection…</div>
+        <div class="messages" id="messages" role="log" aria-label="Preference conversation" aria-live="polite"></div>
+        <div class="suggestions" id="suggestions"><p>TRY A PREFERENCE</p><button data-example="I want to take CS2102 in semester 3.">Take CS2102 in semester 3 <span>↗</span></button><button data-example="I would prefer to finish within 8 semesters.">Finish within 8 semesters <span>↗</span></button><button data-example="No courses in semester 5; I will be on exchange.">Keep semester 5 free <span>↗</span></button></div>
+        <form id="chat-form"><label class="sr-only" for="chat-input">Your course preferences</label><div class="chat-compose"><textarea id="chat-input" rows="2" maxlength="3000" placeholder="What would you like in your plan?" required></textarea><button id="send" type="submit" aria-label="Send preference">↑</button></div><p>Your message becomes constraint cards.</p></form>
+      </aside>
+    </section>
+    <section class="generation-bar"><div class="generation-label"><span class="mini-grid">▦</span><div><strong>Ready to find your path?</strong><small>Only the active cards above are sent to the CSP solver.</small></div></div><div class="plan-settings"><label>Starting AY<select id="start-year" aria-label="Starting academic year"><option value="2026">2026 / 27</option><option value="2027">2027 / 28</option><option value="2025">2025 / 26</option></select></label><label>Search horizon<select id="horizon" aria-label="Maximum planning semesters"><option value="8">8 semesters</option><option value="10" selected>10 semesters</option><option value="12">12 semesters</option></select></label></div><button class="primary" id="generate"><span class="button-icon">✳</span> Generate my plan <span>→</span></button></section>
+    <div class="profile-settings"><label><input type="checkbox" id="math-qualified" checked> H2 / A-level Mathematics qualification satisfied</label><label><input type="checkbox" id="allow-unpublished"> Allow conditional plans when lesson times are unpublished</label><span>Strict weekly verification is the default. Conditional plans clearly list unverified courses.</span></div>
+    <section class="study-plan panel" id="study-plan">
+      <div class="plan-heading"><div><div class="section-label">THE BIG PICTURE</div><h2>Your study plan</h2><p id="plan-caption">A semester-by-semester view of what's ahead.</p></div><div class="plan-actions"><div class="view-toggle" aria-label="Plan view"><button data-view="degree" aria-pressed="true">Degree plan</button><button data-view="weekly" aria-pressed="false" disabled>Weekly timetable</button></div><button class="secondary" id="export" disabled>Export to NUSMods ↗</button></div></div>
+      <div id="plan-status" class="notice" role="status" hidden></div>
+      <div id="academic-audit" hidden></div>
+      <div id="plan-content"><div class="empty-plan"><div class="empty-illustration" aria-hidden="true"><span></span><span></span><span></span><span></span><b>↗</b></div><h3>A fresh start for your next four years.</h3><p>Fine-tune your constraints, then generate your first course plan.</p><button class="text-button" id="empty-generate">Let's build your plan →</button></div></div>
+      <div id="plan-warnings" hidden></div>
+    </section>
+    <footer><span class="footer-brand">pathway</span><span>Built for the journey. Powered by constraint programming.</span><span>NUS · CS3263 · 2026</span></footer>
+  </main>
+  <dialog id="constraint-dialog"><form id="constraint-form"><div class="dialog-heading"><h2>Add a constraint</h2><button type="button" class="close-dialog" aria-label="Close">×</button></div><p>Give your planner a little more direction.</p><label>Constraint type<select id="rule-type"><option value="course_in_semester">Take a course in a semester</option><option value="min_total_units">Minimum total units</option><option value="require_courses">Include courses</option><option value="exclude_courses">Exclude courses</option><option value="finish_by">Finish by a semester</option><option value="blocked_semesters">Keep semesters free</option><option value="focus_area">Complete a focus area</option><option value="semester_units">Semester workload limits</option><option value="workload_target">Preferred semester workload</option></select></label><div id="rule-fields"></div><label id="strength-label">How important is this?<select id="rule-strength"><option value="hard">Must satisfy (hard)</option><option value="soft">Prefer if possible (soft)</option></select></label><p class="form-error" id="rule-error" role="alert"></p><button type="submit" class="primary">Add to my constraints ＋</button></form></dialog>
+  <dialog id="export-dialog"><div class="dialog-heading"><h2>Continue in NUSMods</h2><button class="close-dialog" aria-label="Close">×</button></div><p>Your courses and academic years are mapped to the native NUSMods Planner format.</p><div class="export-option"><span class="option-number">01</span><div><h3>Download your course plan</h3><p>Save the JSON file with your generated semesters and real course codes.</p><button class="secondary" id="download-plan">Download Planner JSON ↓</button></div></div><div class="export-option"><span class="option-number">02</span><div><h3>Upload in NUSMods</h3><p>Open Planner, choose <strong>Upload</strong> and select the downloaded file. Import replaces the plan in that browser.</p><a class="primary" href="https://nusmods.com/planner" target="_blank" rel="noopener">Open NUSMods Planner ↗</a></div></div></dialog>
+  <dialog id="catalogue-dialog"><div class="dialog-heading"><div><p class="section-label">REAL COURSES. CLEAR CHOICES.</p><h2>Explore your course options</h2></div><button class="close-dialog" aria-label="Close">×</button></div><p>Search course codes, titles or requirement categories. Official eligibility and the reference offering are shown for each course.</p><label class="sr-only" for="catalogue-search">Search courses</label><input id="catalogue-search" type="search" placeholder="Try DTK1234, data literacy, ID…"><div id="catalogue-filters" class="catalogue-filters" aria-label="Course categories"></div><p id="catalogue-result-count" aria-live="polite"></p><div id="catalogue-results"></div></dialog>
+  <div class="toast" id="toast" role="status" hidden></div>
+</body>
+</html>
