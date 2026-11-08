@@ -1,0 +1,4669 @@
+import functools
+import inspect
+import math
+import types
+from collections import namedtuple
+
+from pycsp3.classes.auxiliary.conditions import Condition, ConditionInterval, ConditionSet, eq, le
+from pycsp3.classes.auxiliary.enums import TypeOrderedOperator, TypeConditionOperator, TypeVar, TypeCtr, TypeCtrArg, TypeRank
+from pycsp3.classes.auxiliary.diagrams import Automaton, MDD
+from pycsp3.classes.entities import (
+    EVar, EVarArray, ECtr, EMetaCtr, ECtrs, EToGather, EToSatisfy, EBlock, ESlide, EAnd, EOr, ENot, EXor, EIfThen, EIfThenElse, EIff, EObjective, EAnnotation,
+    AnnEntities, CtrEntities, ObjEntities, VarEntities)
+from pycsp3.classes.main.annotations import (
+    AnnotationDecision, AnnotationOutput, AnnotationVarHeuristic, AnnotationValHeuristic, AnnotationFiltering, AnnotationPrepro, AnnotationSearch,
+    AnnotationRestarts)
+from pycsp3.classes.main.constraints import (
+    ConstraintIntension, ConstraintExtension, ConstraintRegular, ConstraintMdd, ConstraintAllDifferent,
+    ConstraintAllDifferentList, ConstraintAllDifferentMatrix, ConstraintAllEqual, ConstraintAllEqualList, ConstraintOrdered, ConstraintLex, ConstraintLexMatrix,
+    ConstraintDisjoint, ConstraintPrecedence, ConstraintSum, ConstraintCount, ConstraintNValues, ConstraintCardinality, ConstraintMaximum,
+    ConstraintMinimum, ConstraintMaximumArg, ConstraintMinimumArg, ConstraintElement, ConstraintChannel, ConstraintNoOverlap, ConstraintCumulative,
+    ConstraintBinPacking, ConstraintKnapsack, ConstraintFlow, ConstraintCircuit, ConstraintClause, ConstraintAdhoc, ConstraintRefutation,
+    ConstraintDummyConstant, ConstraintSlide, PartialConstraint, ScalarProduct, auxiliary, manage_global_indirection)
+from pycsp3.classes.main.objectives import ObjectiveExpression, ObjectivePartial
+from pycsp3.classes.main.variables import Domain, Variable, VariableInteger, VariableSymbolic, check_no_boolean
+from pycsp3.classes.nodes import TypeNode, Node, neg_var
+from pycsp3.dashboard import options
+from pycsp3.tools.curser import queue_in, check_no_negated_membership, columns, OpOverrider, ListInt, ListVar, ListMultipleVar, ListCtr, cursing, convert_to_namedtuples
+from pycsp3.tools.inspector import checkType, extract_declaration_for, comment_and_tags_of, comments_and_tags_of_parameters_of, decorator_wrappers
+from pycsp3.tools.utilities import (flatten, is_containing, is_1d_list, is_1d_tuple, is_matrix, ANY, ALL, error, warning, warning_if, error_if, is_2d_list)
+
+from pycsp3.classes.auxiliary.tables import to_starred_table_for_no_overlap1, to_starred_table_for_no_overlap2
+
+''' Global Variables '''
+
+absPython, maxPython, minPython = abs, max, min
+
+EQ, NE, IN, NOTIN, SET = TypeNode.EQ, TypeNode.NE, TypeNode.IN, TypeNode.NOTIN, TypeNode.SET
+
+started_modeling = False  # It becomes true when the first variable or array of variables is defined (cursing is then activated)
+
+
+def protect():
+    """
+    Disables the redefined operators (==, >, >=, etc.), and returns the object OpOverrider.
+    One can then execute some code in protected mode by calling execute().
+    Once the code is executed, the redefined operators are reactivated.
+
+    :return: the object OpOverrider
+    :example:
+        # the code typically looks like protect().execute(...)
+        x = VarArray(size=3, dom=range(3))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        # without protect(), x[0] == x[1] builds an expression, displayed as eq(x[0],x[1])
+        # in protected mode, the operator == is not redefined: the two variables are simply compared, which gives False
+        print(protect().execute(x[0] == x[1]))
+    """
+    return OpOverrider.disable()
+
+
+''' Checking Model Variants '''
+
+
+def variant(name=None):
+    """
+    Returns the name of the variant given on the command line (option -variant) if the specified argument is None.
+    Returns True iff the variant given on the command line is equal to the argument otherwise.
+    Note that the variant given on the command line is the substring until the symbol '-' (after this symbol,
+    the name of the sub-variant starts), or the end of the string
+
+    :param name: the name of a variant, or None
+    :return: the name of the variant specified by the user, or a Boolean
+    :example:
+        # when the variant 'table' is activated (see the command line below), variant("table") is True,
+        # and variant() (without argument) returns 'table'
+        x = VarArray(size=3, dom=range(3))
+
+        if variant("table"):
+            # with the variant 'table', the permutations of 0, 1 and 2 are listed as supports
+            satisfy(Table(scope=x, supports={(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)}))
+        else:
+            # without the option -variant (or with another variant), a global constraint is posted instead
+            satisfy(AllDifferent(x))
+
+        # a solution: [0, 1, 2]
+    :example:
+        # the command line to be typed for activating the variant 'table'
+        python model.py -variant=table
+    """
+    assert options.variant is None or isinstance(options.variant, str)
+    pos = -1 if options.variant is None else options.variant.find("-")  # position of dash in options.variant
+    option_variant = options.variant[0:pos] if pos != -1 else options.variant
+    return option_variant if name is None else option_variant == name
+
+
+def subvariant(name=None):
+    """
+    Returns the name of the sub-variant given on the command line (option -variant) if the specified argument is None.
+    Returns True iff the sub-variant given on the command line is equal to the argument otherwise.
+    Note that the sub-variant given on the command line is the substring starting after the symbol '-' (before this symbol,
+    this is the name of the variant).
+
+    :param name: the name of a sub-variant, or None
+    :return: the name of the sub-variant specified by the user, or a Boolean
+    :example:
+        # when the variant 'main' and its sub-variant 'relaxed' are activated (see the command line below),
+        # variant("main") and subvariant("relaxed") are both True
+        x = VarArray(size=2, dom=range(10))
+
+        if subvariant("relaxed"):
+            # with the sub-variant 'relaxed', the two values just need to be different
+            satisfy(x[0] != x[1])
+        else:
+            # otherwise, the two values must be strictly ordered
+            satisfy(x[0] < x[1])
+
+        # a solution: [0, 1]
+    :example:
+        # the command line to be typed for activating the variant 'main' and its sub-variant 'relaxed'
+        python model.py -variant=main-relaxed
+    """
+    assert options.variant is None or isinstance(options.variant, str)
+    pos = -1 if options.variant is None else options.variant.find("-")  # position of dash in options.variant
+    option_subvariant = options.variant[pos + 1:] if pos != -1 else None
+    return option_subvariant if name is None else option_subvariant == name
+
+
+''' Declaring stand-alone variables and arrays '''
+
+
+def _valid_identifier(s):  # as in XCSP3: a letter followed by letters, digits and underscores
+    return isinstance(s, str) and len(s) > 0 and s[0].isascii() and s[0].isalpha() and all(c.isascii() and (c.isalnum() or c == '_') for c in s)
+
+
+def Var(term=None, *others, dom=None, id=None):
+    """
+    Builds a stand-alone variable with the specified domain.
+    The domain is either given by the named parameter dom, or given
+    by the sequence of terms passed as parameters.
+
+    :param term: the first term defining the domain, or None
+    :param others: the other terms defining the domain, or None
+    :param dom: the domain of the variable, or None
+    :param id: the id (name) of the variable, or None (usually, None)
+    :return: a stand-alone Variable with the specified domain
+    :example:
+        x = Var(dom=range(10))
+        y = Var(0, 2, 4)
+
+        satisfy(x < y)
+
+        # a solution: 0
+    :example:
+        # the domain can be given by the terms passed as parameters, or by the named parameter dom
+        x = Var(0, 1)  # x is a 0/1 variable
+        y = Var(dom=range(10))  # y takes a value between 0 and 9
+        z = Var(dom={v for v in range(100) if v % 3 == 0})  # z is a multiple of 3 less than 100
+    :example:
+        # symbolic variables: the values of the domain are symbols (strings) instead of integers
+        c = Var(dom={"red", "green", "blue"})  # c is the colour of the car
+        m = Var("petrol", "diesel", "electric")  # m is the engine of the car (the symbols can also be given as terms)
+
+        satisfy(
+           # a symbolic variable can be compared with a symbol
+           c != "red",
+
+           # symbolic variables can be involved in tables (here, the forbidden combinations)
+           (c, m) not in {("blue", "diesel"), ("blue", "electric")}
+        )
+
+        # a solution: blue petrol
+    """
+    global started_modeling
+    if not started_modeling and not options.uncurse:
+        cursing()
+        started_modeling = True
+
+    if term is None and dom is None and id is None:
+        x = auxiliary().new_var(math.inf)  # TODO printing a warning?
+        auxiliary().declared.add(x.id)  # (declared by the user, it is written even if it is involved in no constraint)
+        return x
+    if term is None and dom is None:
+        dom = Domain(math.inf)
+    error_if(term is not None and dom is not None, "The domain of a variable must be given either by terms or by the parameter dom, but not both")
+    if term is not None:
+        dom = flatten(term, others)
+    check_no_boolean(dom)
+    if not isinstance(dom, Domain):
+        if isinstance(dom, (set, frozenset)):
+            dom = list(dom)
+        if is_2d_list(dom, int):
+            dom = list(set(flatten(dom)))
+        if isinstance(dom, (tuple, list)) and len(dom) > 1 and all(isinstance(v, int) for v in dom):
+            dom = sorted(set(dom))  # a set discards the values given several times (as in VarArray())
+            if dom[-1] - dom[0] + 1 == len(dom):
+                dom = range(dom[0], dom[-1] + 1)
+        if hasattr(dom, '__call__'):  # if it is a function
+            from inspect import signature
+            error_if(len(signature(dom).parameters) != 0, "The function given for the domain of a stand-alone variable must have no parameter")
+            dom = dom.__call__()
+        dom = Domain(dom)
+    error_if(dom.type not in {TypeVar.INTEGER, TypeVar.SYMBOLIC},
+             "Currently, only integer and symbolic variables are supported. Problem with " + str(dom))
+
+    var_name = id if id else extract_declaration_for("Var")  # the specified name, if present, has priority
+    # if var_name is None:  # TODO: I do not remember the use of that piece of code
+    #     if not hasattr(Var, "fly"):
+    #         Var.fly = True
+    #         warning("at least, one variable created on the fly")
+    #     return dom
+    error_if(not _valid_identifier(var_name), "The variable identifier " + str(var_name) + " is not valid")
+    error_if(var_name in Variable.name2obj, "The identifier " + str(var_name) + " is used twice. This is not possible")
+
+    comment, tags = comment_and_tags_of(function_name="Var")
+    assert isinstance(comment, (str, type(None))), "A comment must be a string (or None). Usually, they are given on plain lines preceding the declaration"
+
+    var_object = VariableInteger(var_name, dom) if dom.type == TypeVar.INTEGER else VariableSymbolic(var_name, dom)
+    Variable.name2obj[var_name] = var_object
+    EVar(var_object, comment, tags)  # object wrapping the variable x
+    return var_object
+
+
+def VarArray(doms=None, *, size=None, dom=None, dom_border=None, id=None, comment=None, tags=None):
+    """
+    Builds an array of variables.
+    The number of dimensions of the array is given by the number of values in size.
+    The size of the ith dimension is given by the ith value of size.
+    The domain is either the same for all variables, and then directly given by dom,
+    or specific to each variable, in which case dom must be a function.
+
+    :param size: the size of each dimension of the array
+    :param dom: the domain of the variables
+    :param dom_border: the domain of the cells at the border of the (two-dimensional) array
+    :param id: the id (name) of the array, or None (usually, None)
+    :param comment: a string
+    :param tags: a (possibly empty) list of tags
+    :return: an array of variables
+    :example:
+        x = VarArray(size=5, dom=range(10))
+        y = VarArray(size=[2, 3], dom={0, 1})
+        z = VarArray(size=10, dom=lambda i: range(i+1))
+    :example:
+        # an array of symbolic variables: map colouring, where two neighbouring regions cannot have the same colour
+        x = VarArray(size=4, dom={"red", "green", "blue"})  # x[i] is the colour of the ith region
+
+        satisfy(
+           [x[i] != x[i + 1] for i in range(3)],
+
+           x[0] == "red"
+        )
+
+        # a solution: ['red', 'blue', 'green', 'blue']
+    """
+    global started_modeling
+    if not started_modeling and not options.uncurse:
+        cursing()
+        started_modeling = True
+
+    error_if(doms is None and dom is None, "The domain of the variables of an array must be given (parameter dom)")
+    if doms is not None:
+        error_if(not isinstance(doms, list), "The domains given as first parameter of VarArray() must be in a list (of objects Domain or None)")
+        error_if(size is not None or dom is not None or dom_border is not None or comment is not None,
+                 "When the domains are given as first parameter of VarArray(), the parameters size, dom, dom_border and comment cannot be used")
+        error_if(any(not isinstance(d, Domain) and d is not None for d in doms),
+                 "The domains given as first parameter of VarArray() must be objects Domain or None")
+        return VarArray(size=len(doms), dom=lambda i: doms[i])
+
+    if isinstance(size, range):
+        error_if(size.start != 0 or len(size) == 0, "A range given for the size of an array must start at 0 and be non-empty")
+        size = size.stop
+    if isinstance(size, (tuple, list)) and any(isinstance(s, range) for s in size):
+        error_if(any(s.start != 0 or len(s) == 0 for s in size if isinstance(s, range)),
+                 "A range given for the size of an array must start at 0 and be non-empty")
+        size = [s.stop if isinstance(s, range) else s for s in size]
+    error_if(not isinstance(size, (int, tuple, list)) or isinstance(size, (tuple, list)) and len(size) == 0,
+             "The size of an array must be an integer or a non-empty list of integers (size=" + str(size) + ")")
+
+    if dom_border is not None:
+        error_if(isinstance(size, int) or len(size) != 2, "The parameter dom_border can only be used with a two-dimensional array")
+        if isinstance(dom, type(lambda: 0)):
+            return VarArray(size=size, dom=lambda i, j: dom_border if i in (0, size[0] - 1) or j in (0, size[1] - 1) else dom(i, j))
+        return VarArray(size=size, dom=lambda i, j: dom_border if i in (0, size[0] - 1) or j in (0, size[1] - 1) else dom)
+
+    size = [size] if isinstance(size, int) else size
+    if len(size) > 1 and isinstance(size[-1], (tuple, list)):  # it means that the last dimension is of variable length
+        if isinstance(dom, type(lambda: 0)):
+            return VarArray(size=size[:-1] + [max(size[-1])], dom=lambda *ids: dom(*ids) if ids[-1] < size[-1][ids[-2]] else None)
+        return VarArray(size=size[:-1] + [max(size[-1])], dom=lambda *ids: dom if ids[-1] < size[-1][ids[-2]] else None)
+
+    checkType(size, [int])
+    error_if(any(dimension <= 0 for dimension in size), "Each dimension of an array must be strictly positive (size=" + str(size) + ")")
+
+    # checkType(dom, (range, Domain, [int, range, str, Domain, type(None)], type(lambda: 0)))  # TODO a problem with large sets
+    ext_name = extract_declaration_for("VarArray")
+    if isinstance(ext_name, list):
+        array_name = ext_name
+        error_if(id, "The parameter 'id' is not compatible with the specification of a list of individual names")
+        error_if(len(size) != 1 or size[0] != len(ext_name),
+                 "The size " + str(size) + " must be the number of individual names " + str(ext_name) + " (a one-dimensional array being expected)")
+        error_if(any(not _valid_identifier(v) for v in ext_name), "Some identifiers in " + str(ext_name) + " are not valid")
+        error_if(any(v in Variable.name2obj for v in ext_name), "Some identifiers in " + str(ext_name) + " are used twice.")
+        error_if(len(set(ext_name)) != len(ext_name), "Some identifiers in " + str(ext_name) + " are given several times.")
+    else:
+        array_name = id if id else ext_name  # the specified name, if present, has priority
+        error_if(not _valid_identifier(array_name), "The variable identifier " + str(array_name) + " is not valid")
+        error_if(array_name in Variable.name2obj, "The identifier " + str(array_name) + " is used twice. This is not possible")
+    if comment is None and tags is None and not isinstance(array_name, list):
+        comment, tags = comment_and_tags_of(function_name="VarArray")
+
+    assert isinstance(comment, (str, type(None))), "A comment must be a string (or None). Usually, they are given on plain lines preceding the declaration"
+    check_no_boolean(dom)
+    if isinstance(dom, int):  # TODO: should we print a warning?
+        dom = range(dom)
+    if isinstance(dom, type(lambda: 0)):
+        parameters = inspect.signature(dom).parameters.values()
+        error_if(not any(p.kind == p.VAR_POSITIONAL for p in parameters) and len(parameters) != len(size),  # a function with *args is always accepted
+                 "The number of parameters of the function given for dom must be the number of dimensions of the array (" + str(len(size)) + ")")
+    assert isinstance(comment, (str, type(None))), "A comment must be a string (or None). Usually, they are given on plain lines preceding the declaration"
+    if isinstance(dom, (tuple, list, set, frozenset)):
+        vals = set(flatten(dom))
+        error_if(len(vals) == 0, "The domain of the variables of an array must not be empty")
+        if all(isinstance(v, int) for v in vals):
+            min_value, max_value = min(vals), max(vals)
+            dom = range(min_value, max_value + 1) if 3 < len(vals) == (max_value - min_value + 1) else Domain(vals)
+        else:
+            dom = Domain(vals)
+    var_objects = Variable.build_variables_array(array_name, size, dom)
+    if isinstance(array_name, list):
+        assert len(array_name) == len(var_objects)
+        for i in range(len(array_name)):
+            Variable.name2obj[array_name[i]] = var_objects[i]
+            EVar(var_objects[i], None, None)  # object wrapping the variables
+        return tuple(var_objects)
+    else:
+        def _to_ListVar(t):
+            if t is None:
+                return None
+            if isinstance(t, Variable):
+                return t
+            assert isinstance(t, list)
+            return ListVar(_to_ListVar(x) for x in t)
+
+        lv = _to_ListVar(var_objects)
+        Variable.name2obj[array_name] = lv  # so that var() returns the same ListVar as VarArray()
+        EVarArray(lv, array_name, comment, tags)  # object wrapping the array of variables
+        Variable.arrays.append(lv)
+        return lv
+
+
+def VarArrayMultiple(*, size, fields):
+    """
+    Builds and returns an array of named tuples of variables, each field being declared with its own domain.
+
+    This is convenient when several variables must be associated with each cell of an array; a variable of
+    a cell is then accessed by the name of its field.
+
+    :param size: the size (an integer) or the dimensions (a list of integers) of the array
+    :param fields: a dictionary mapping the name of each field to the domain of the corresponding variables
+    :return: an array of named tuples of variables
+    :example:
+        points = VarArrayMultiple(size=10, fields={"x": range(100), "y": range(200)})
+
+        satisfy(
+          points[0] == points[-1],
+          points[1].x != points[2].x
+        )
+
+        # a solution: [0, 0]
+    """
+    error_if(not isinstance(fields, dict) or any(not isinstance(k, str) for k in fields),
+             "The fields of VarArrayMultiple() must be given by a dictionary mapping names (strings) to domains")
+    error_if(len(fields) == 0, "At least one field must be given to VarArrayMultiple()")
+    size = [size] if isinstance(size, int) else size
+    checkType(size, [int])
+
+    comment, tags = comment_and_tags_of(function_name="VarArrayMultiple")
+    cname = extract_declaration_for("VarArrayMultiple")
+    arrays = [VarArray(size=size, dom=fields[k], id=cname + "_" + k,
+                       comment="field " + str(k) + " of " + str(cname) + ("; " + comment if comment is not None else ""), tags=tags) for k in fields]
+    if not hasattr(VarArrayMultiple, "cnt"):
+        VarArrayMultiple.cnt = 0
+    NT = namedtuple("ant" + str(VarArrayMultiple.cnt), fields.keys())
+    VarArrayMultiple.cnt += 1
+    NT.__eq__ = ListVar.__eq__  # OpOverrider.__eq__lv
+    NT.__ne__ = ListVar.__ne__  # OpOverrider.__ne__lv
+    NT.__getitem__ = ListVar.__getitem__  # OpOverrider.__getitem__lv
+
+    def __rec(dims, subarrays):
+        if len(dims) == 0:
+            return NT(*[sub for sub in subarrays])
+        return ListMultipleVar([__rec(dims[1:], [sub[i] for sub in subarrays]) for i in range(dims[0])])
+
+    return __rec(size, arrays).add_fields(list(fields.keys()))
+
+
+def var(name):
+    """
+    Returns the variable or variable array whose name is specified
+    :param name: the name of the variable or variable array to be returned
+    :example:
+        x = Var(range(10))
+        y = Var(dom=range(5), id="yy_12")
+        Var(dom=range(10), id="z")
+
+        d = dict()
+        a = 1
+        d[0] = Var(0, 1, id="d_0")
+        d[a] = Var(0, 1, id="d_1")
+
+        satisfy(
+           x >= 3,
+           var("x") <= 6,
+           y > 2,
+           var("yy_12") < 4,
+           var("z") != 4,
+           d[0] + d[1] != 0,
+           var("d_0") + var("d_1") != 2
+        )
+
+        # a solution: 3
+    """
+    error_if(not isinstance(name, str), "The name given to var() must be a string, and not " + str(name))
+    error_if(name not in Variable.name2obj,
+             "the variable, or variable array, specified when calling the function 'var()' with the name " + name + " has not been declared")
+    return Variable.name2obj[name]
+
+
+''' Posting constraints (through satisfy()) '''
+
+
+def _bool_interpretation_for_in(left_operand, right_operand, bool_value):
+    assert type(bool_value) is bool
+    if isinstance(left_operand, ConstraintDummyConstant):  # a constant (as the count of no term) in (or not in) a set of values
+        return ConstraintDummyConstant(1 if (left_operand.val in right_operand) == bool_value else 0)
+    if isinstance(left_operand, Variable):
+        if isinstance(right_operand, (tuple, list, set, frozenset, range)) and len(right_operand) == 0:
+            if not bool_value:
+                return None  # no value is forbidden: the constraint always holds
+            # no value is allowed: a table constraint with an empty set of supports is posted (the model is unsatisfiable)
+            warning("A table constraint with an empty set of supports is posted for " + str(left_operand) + ": the model is unsatisfiable", "empty_supports")
+            return ECtr(ConstraintExtension([left_operand], [], True, options.keep_hybrid, options.restrict_tables_wrt_domains))
+        if isinstance(right_operand, (tuple, list, set, frozenset)) and is_containing(right_operand, Variable):
+            if len(right_operand) < 4:  # TODO hard coding (introducing an option to adjust that?)
+                st = Node.build(SET, right_operand)
+                return _Intension(Node.build(IN, left_operand, st) if bool_value else Node.build(NOTIN, left_operand, st))
+            if bool_value:
+                condition = Condition.build_condition((TypeConditionOperator.EQ, left_operand))
+                return ECtr(ConstraintElement(flatten(right_operand), index=None, condition=condition))  # member
+            else:
+                return [_Intension(Node.build(NE, left_operand, y)) for y in right_operand]
+                # condition = Condition.build_condition(TypeConditionOperator.NE, left_operand)
+                # return ECtr(ConstraintElement(flatten(right_operand), index=None, condition=condition))  # member
+        if isinstance(right_operand, range):
+            # return (right_operand.start <= left_operand) & (left_operand < right_operand.stop)
+            return _Extension(scope=[left_operand], table=list(right_operand), positive=bool_value)
+    if isinstance(left_operand, (Variable, int, str)) and isinstance(right_operand, (set, frozenset, range)):
+        # it is a unary constraint of the form x in/not in set/range
+        return _Intension(Node.build(IN, left_operand, right_operand) if bool_value else Node.build(NOTIN, left_operand, right_operand))
+    # elif isinstance(left_operand, Node) and isinstance(right_operand, range):
+    #     if bool_value:
+    #         ctr = Intension(conjunction(left_operand >= right_operand.start, left_operand <= right_operand.stop - 1))
+    #     else:
+    #         ctr = Intension(disjunction(left_operand < right_operand.start, left_operand > right_operand.stop - 1))
+    elif isinstance(left_operand, PartialConstraint):  # it is a partial form of constraint (sum, count, maximum, ...)
+        if isinstance(right_operand, (tuple, list, set, frozenset, range)) and len(right_operand) == 0:
+            # the value never belongs to an empty set: the constraint is false with 'in', and always holds with 'not in'
+            return _false_constraint() if bool_value else None
+        operator = TypeConditionOperator.IN if bool_value else TypeConditionOperator.NOTIN
+        if options.mini and isinstance(left_operand.constraint, ConstraintSum):
+            ctr = _sum_for_mini(left_operand, Condition.build_condition((operator, right_operand)))
+            return ctr if not isinstance(ctr, ConstraintDummyConstant) else _false_constraint() if ctr.val == 0 else None
+        ctr = PartialConstraint.complete(left_operand.constraint.set_condition(operator, right_operand))  # a constant if the result is known
+    elif isinstance(right_operand, Automaton):  # it is a regular constraint
+        error_if(not bool_value, "Currently, the operator 'not in' cannot be used with an automaton: only 'x in A' is possible (constraint Regular)")
+        ctr = Regular(scope=left_operand, automaton=right_operand)
+    elif isinstance(right_operand, MDD):  # it is an MDD constraint
+        error_if(not bool_value, "Currently, the operator 'not in' cannot be used with an MDD: only 'x in M' is possible (constraint MDD)")
+        ctr = Mdd(scope=left_operand, mdd=right_operand)
+    elif isinstance(left_operand, int) and (is_1d_list(right_operand, Variable) or is_1d_tuple(right_operand, Variable)):
+        # at least one variable takes the value with 'in' (atLeast1), and none with 'not in' TODO to be replaced by a member/element constraint ?
+        ctr = Count(right_operand, value=left_operand, condition=(TypeConditionOperator.GE, 1) if bool_value else (TypeConditionOperator.EQ, 0))
+        if isinstance(ctr, Node):  # a single variable
+            ctr = _Intension(ctr)
+    # elif isinstance(left_operand, Node):
+    #
+    else:  # It is a table constraint
+        if not hasattr(left_operand, '__iter__'):
+            left_operand = [left_operand]
+        assert isinstance(right_operand, list)
+        if not bool_value and len(right_operand) == 0:
+            return None
+        # TODO what to do if the table is empty and bool_value is true? an error message ?
+        # if len(right_operand) == 0:  # it means an empty table, and Python will generate True (not in [] => True)
+        if len(left_operand) == 1:
+            if not is_1d_list(right_operand, int) and not is_1d_list(right_operand, str):
+                assert all(isinstance(v, (tuple, list)) and len(v) == 1 for v in right_operand)
+                right_operand = [v[0] for v in right_operand]
+        ctr = _Extension(scope=flatten(left_operand), table=right_operand, positive=bool_value)  # TODO ok for using flatten? (before it was list())
+    return ctr
+
+
+def _complete_partial_forms_of_constraints(entities):
+    for i, c in enumerate(entities):
+        if isinstance(c, bool):
+            assert len(queue_in) > 0, "A boolean that does not represent a constraint is in the list of constraints in satisfy(): " + str(entities)
+            right_operand, left_operand = queue_in.popleft()
+            entities[i] = _bool_interpretation_for_in(left_operand, right_operand, c)
+        elif isinstance(c, ESlide):
+            for ent in c.entities:
+                _complete_partial_forms_of_constraints(ent.entities)
+    return entities
+
+
+def _wrap_intension_constraints(entities):
+    for i, c in enumerate(entities):
+        if isinstance(c, Node):
+            entities[i] = _Intension(c)  # the node is wrapped by a Constraint object (Intension)
+    return entities
+
+
+def And(*args, meta=False):
+    """
+    Builds a meta-constraint And from the specified arguments.
+    The meta-constraint holds iff all the specified constraints hold.
+
+    When the parameter 'meta' is not true, reification is employed.
+
+    :param args: a tuple of constraints
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a meta-constraint And, or its reified form
+    :example:
+        # a machine is opened when it is both available and assigned some work
+        b = VarArray(size=3, dom={0, 1})  # b[i] is 1 iff the ith machine is available
+        x = VarArray(size=3, dom=range(5))  # x[i] is the quantity of work assigned to the ith machine
+
+        satisfy(
+           Sum(x) == 7,
+
+           [And(b[i] == 1, x[i] > 0) for i in range(3)]
+        )
+
+        # a solution: [1, 1, 1] [1, 2, 4]
+    :example:
+        # a meta-constraint And can combine global constraints and expressions
+        x = VarArray(size=4, dom=range(6))
+
+        satisfy(
+           # the sum of x must be greater than 10, and the values of x must be all different
+           And(Sum(x) > 10, AllDifferent(x))
+        )
+
+        # a solution: [0, 2, 4, 5]
+    """
+    if options.use_meta or meta:
+        return EAnd(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(*args))))
+    return conjunction(*args)
+
+
+def Or(*args, meta=False):
+    """
+    Builds a meta-constraint Or from the specified arguments.
+    The meta-constraint holds iff at least one of the specified constraints holds.
+
+    When the parameter 'meta' is not true, reification is employed.
+
+    :param args: a tuple of constraints
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a meta-constraint Or, or its reified form
+    :example:
+        # each area must be covered by at least one of the two nearest stations
+        b = VarArray(size=4, dom={0, 1})  # b[i] is 1 iff the ith station is built
+
+        satisfy(
+           Or(b[0] == 1, b[1] == 1),
+
+           Or(b[2] == 1, b[3] == 1)
+        )
+
+        # a solution: [0, 1, 0, 1]
+    :example:
+        # a meta-constraint Or can combine global constraints and expressions
+        x = VarArray(size=4, dom=range(6))
+
+        satisfy(
+           # the sum of x must be greater than 10, or the values of x must be all different
+           Or(Sum(x) > 10, AllDifferent(x))
+        )
+
+        # a solution: [0, 1, 2, 3]
+    """
+    if options.use_meta or meta:
+        return EOr(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(*args))))
+    return disjunction(*args)
+
+
+def Not(arg, meta=False):
+    """
+    Builds a meta-constraint Not from the specified argument.
+    The meta-constraint holds iff the specified constraint does not hold.
+
+    When the parameter 'meta' is not true, reification is employed.
+
+    :param arg: a constraint
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a meta-constraint Not, or its reified form
+    :example:
+        # the values of x cannot be all different: at least two of them must be equal
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           Not(AllDifferent(x))
+        )
+
+        # a solution: [0, 0, 0, 0]
+    """
+    if options.use_meta or meta:
+        return ENot(_wrap_intension_constraints(_complete_partial_forms_of_constraints(arg)))
+    res = manage_global_indirection(arg)
+    if res is None:
+        return ENot(_wrap_intension_constraints(_complete_partial_forms_of_constraints(arg)))
+    return ~res[0] if len(res) == 1 else ~conjunction(*res)
+
+
+def Xor(*args, meta=False):
+    """
+    Builds a meta-constraint Xor from the specified arguments.
+    For two constraints, the meta-constraint holds iff exactly one of them holds.
+
+    When the parameter 'meta' is not true, reification is employed.
+
+    :param args: a tuple of constraints
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a meta-constraint Xor, or its reified form
+    :example:
+        # exactly one of the two rooms must be booked for the meeting
+        b = VarArray(size=2, dom={0, 1})  # b[i] is 1 iff the ith room is booked
+
+        satisfy(
+           Xor(b[0] == 1, b[1] == 1)
+        )
+
+        # a solution: [0, 1]
+    :example:
+        # a meta-constraint Xor can combine global constraints and expressions
+        x = VarArray(size=4, dom=range(6))
+
+        satisfy(
+           # exactly one of the two must hold: the sum of x is greater than 10, or the values of x are all different
+           Xor(Sum(x) > 10, AllDifferent(x))
+        )
+
+        # a solution: [0, 1, 5, 5]
+    """
+    if options.use_meta or meta:
+        return EXor(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(*args))))
+    return xor(*args)
+
+
+def _simplify_expression(args, disjunction_mode: bool):
+    # assert len(queue_in) == 0 or all(not isinstance(arg, bool) for arg in args)
+    val = 1 if disjunction_mode else 0
+    if any(isinstance(arg, bool) for arg in args):
+        if len(queue_in) == 0:
+            if len(args) > 1:
+                warning("Simplifying expression in " + str(args) + " by discarding Boolean values directly assessed",
+                        "simplifying_" + ("disjunction" if disjunction_mode else "conjunction"))
+            if any(isinstance(arg, bool) and arg == disjunction_mode for arg in args):
+                return ConstraintDummyConstant(val)
+            args = [arg for arg in args if not isinstance(arg, bool)]
+        else:  # TODO should we do that?
+            error("You must avoid the construction you use with 'in' in complex expressions."
+                  + " For unary table constraints, use among() and not_among() as for example:"
+                  + " x[0].among(2,4),  x[1].not_among(range(5))")
+            # warning("Simplifying expression in " + str(args) + " with both 'in expressions' queued and direct Boolean values",
+            #         "simplifying_both_mode_" + ("disjunction" if disjunction_mode else "conjunction"))
+            # if any(isinstance(arg, bool) and arg == disjunction_mode for arg in args):
+            #     return ConstraintDummyConstant(val)
+            # args = [arg for arg in args if not isinstance(arg, bool)]
+    if any(isinstance(arg, ConstraintDummyConstant) for arg in args):
+        if any(isinstance(arg, ConstraintDummyConstant) and arg.val == val for arg in args):
+            return ConstraintDummyConstant(val)
+        assert all(not isinstance(arg, ConstraintDummyConstant) or arg.val == (0 if val == 1 else 1) for arg in args)
+        args = [arg for arg in args if not isinstance(arg, ConstraintDummyConstant)]
+    if len(args) == 0:
+        return ConstraintDummyConstant(1 if val == 0 else 0)
+    return args
+
+
+def If(test, *test_complement, Then, Else=None, meta=False):
+    """
+    Builds a complex form of constraint(s), based on the general control structure 'if then else'.
+    When the test holds, the Then part must hold; otherwise, the Else part (if any) must hold.
+
+    This structure can possibly be decomposed at compilation time: when the parameter 'meta' is not true
+    (the usual and default case), reification may be employed.
+
+    :param test: the condition expression
+    :param test_complement: the other terms (if any) of the condition expression (assuming a conjunction)
+    :param Then: the Then part
+    :param Else: the Else part
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a complex form of constraint(s) based on the control structure 'if then else'
+    :example:
+        # the values of x must be all different when the first one is positive, and all equal otherwise
+        x = VarArray(size=3, dom=range(3))
+
+        satisfy(
+           # the test is given first, then the Then part and, possibly, the Else part
+           If(
+              x[0] > 0,
+              Then=AllDifferent(x),
+              Else=AllEqual(x)
+           )
+        )
+
+        # a solution: [0, 0, 0]
+    :example:
+        # other forms of If: with or without an Else part, with several tests, and with several constraints
+        x = VarArray(size=4, dom=range(5))
+        v = Var(range(5))
+        w = Var(range(5))
+        y = Var(range(5))
+        z = Var(range(5))
+
+        satisfy(
+           # when the sum of x is greater than 10, the values of x must be all different
+           If(Sum(x) > 10, Then=AllDifferent(x)),
+
+           # the same, with an Else part: otherwise, the values of x must be all equal
+           If(Sum(x) > 10, Then=AllDifferent(x), Else=AllEqual(x)),
+
+           # several tests can be given (they form a conjunction): when w > 0 and y != z, w must be equal to y + z
+           If(w > 0, y != z, Then=w == y + z),
+
+           # the Then part can be a list of constraints
+           If(w > 0, y != z, Then=[w == y + z, v != 1]),
+
+           # the Else part can be a list of constraints too
+           If(Sum(x) > 10, Then=y == z, Else=[AllEqual(x), y < 3])
+        )
+
+        # a solution: [0, 0, 0, 0] 0 0 0 0
+    """
+
+    # if len(testOthers) == 0 and isinstance(test, bool):  # We don't allow that because otherwise 'in' no more usable as in If(x[0] in (2,3), Then=...
+    #     return Then if test else Else
+    tests, thens = flatten(test, test_complement), [v for v in flatten(Then) if not (isinstance(v, ConstraintDummyConstant) and v.val == 1)]
+    assert isinstance(tests, list) and len(tests) > 0 and isinstance(thens, list)  # after flatten, we have a list
+    res = _simplify_expression(tests, False)
+    if isinstance(res, ConstraintDummyConstant):
+        if res.val == 1:
+            return thens
+        else:
+            return Else
+    tests = res
+    if len(thens) == 0:
+        return None if Else is None else Or(tests, Else)
+    if options.use_meta or meta:
+        if Else is None:
+            return EIfThen(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(tests, thens))))
+        else:
+            return EIfThenElse(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(tests, thens, Else))))
+    if Else is None and len(thens) == 1 and isinstance(thens[0], ConstraintDummyConstant):
+        if thens[0].val == 0:
+            return disjunction(test == 0 for test in tests)
+        else:
+            assert thens[0].val == 1
+            return ConstraintDummyConstant(1)
+
+    tests, thens = manage_global_indirection(tests, also_pc=True), manage_global_indirection(thens, also_pc=True)  # we get None or a list
+    assert tests is not None and thens is not None and len(tests) > 0 and len(thens) > 0
+
+    def __neg(term):
+        if isinstance(term, Variable):
+            assert term.dom.is_binary()
+            return Node.build(EQ, term, 0)
+        assert isinstance(term, Node) and term.type.is_predicate_operator()
+        sons = term.cnt
+        if term.type == TypeNode.NOT:
+            if sons[0].type == TypeNode.VAR:  # ~x, for a 0/1 variable x
+                return sons[0].cnt
+            assert sons[0].type.is_predicate_operator()
+            return sons[0]
+        if term.type == TypeNode.AND:
+            return Node.build(TypeNode.OR, *[__neg(son) for son in sons])
+        if term.type == TypeNode.OR:
+            return Node.build(TypeNode.AND, *[__neg(son) for son in sons])
+        if term.type == TypeNode.IFF:
+            return Node.build(TypeNode.NOT, term)
+        if term.type == TypeNode.IMP:
+            assert len(sons) == 2 and sons[0].type.is_predicate_operator() and sons[1].type.is_predicate_operator()
+            return Node.build(TypeNode.AND, sons[0], Node.build(TypeNode.NOT, sons[1]))
+        if term.type == TypeNode.EQ and len(sons) == 2 and sons[1].type == TypeNode.INT and sons[1].cnt == 0 \
+                and sons[0].type == TypeNode.VAR and sons[0].cnt.dom.is_binary():  # x=0  => x
+            return sons[0].cnt
+        assert ~term.type is not None
+        return Node(~term.type, sons)
+
+    # if options.ev:
+    if Else is None and len(tests) == 1:
+        if isinstance(tests[0], Variable):
+            return [imply(tests, term) for term in flatten(thens)]
+        if len(thens) == 1:
+            if (not (isinstance(thens[0], Node) and thens[0].type == TypeNode.OR)
+                    and not (isinstance(tests[0], Node) and tests[0].type == TypeNode.NOT)):
+                return imply(tests, thens)
+
+    neg_test = __neg(tests[0]) if len(tests) == 1 else disjunction(__neg(term) for term in tests)
+    t = []
+    t.extend(disjunction(neg_test, term) for term in flatten(thens))
+    if Else is not None:
+        elses = [v for v in flatten(Else) if not (isinstance(v, ConstraintDummyConstant) and v.val == 1)]
+        elses = manage_global_indirection(elses, also_pc=True)
+        if len(elses) > 0:
+            test = conjunction(term for term in tests) if len(tests) > 1 else tests
+            t.extend(disjunction(test, v) for v in elses)
+    return t  # [0] if len(t) == 1 else t
+
+
+def Match(Expr, *, Cases):
+    """
+    Builds and returns the constraints corresponding to a case analysis on the specified expression.
+
+    In the dictionary Cases, each key gives the value(s), or the condition, the expression is compared with,
+    and the associated value gives the constraint that must hold in that case. When the expression is not
+    variable-based, only the constraints of the matching cases are returned.
+
+    :param Expr: the expression (a variable, a tuple of variables, or a constant term) subject to the case analysis
+    :param Cases: a dictionary mapping values, tuples of values, sets, ranges or conditions to constraints
+    :return: the list of constraints corresponding to the case analysis
+    :example:
+        # a case analysis on the value of x: the cell of y selected by x must be set to 1
+        x = Var(range(3))  # x is the index of the selected cell
+
+        y = VarArray(size=3, dom=range(2))  # y[k] is 1 iff the kth cell is set
+
+        satisfy(
+           # each key of Cases is a value of x, associated with the constraint that must hold in that case
+           # a key can also be a tuple, a set, a range or a condition such as lt(2)
+           Match(
+              x,
+              Cases={
+                 0: y[0] == 1,
+                 1: y[1] == 1,
+                 2: y[2] == 1
+              }
+           )
+        )
+
+        # a solution: [1, 0, 0]
+    """
+    assert isinstance(Cases, dict)
+    if isinstance(Expr, (tuple, list)):
+        r = len(Expr)
+        assert r > 1 and all(isinstance(k, (tuple, list)) and len(k) == r for k in Cases.keys())
+        log = isinstance(Expr[0], (Variable, Node))
+        assert all(log == isinstance(v, (Variable, Node)) for v in Expr)
+        if log:
+            assert all(isinstance(v, int) for k in Cases.keys() for v in k)
+            return [disjunction([Expr[i] != k[i] for i in range(r)] + [v]) for k, v in Cases.items()]
+        else:
+            assert all(type(Expr[i]) == type(k[i]) for k in Cases.keys() for i in range(r))
+            return [v for k, v in Cases.items() if all(Expr[i] == k[i] for i in range(r))]
+
+    t = [(k, w) for k, v in Cases.items() for w in (v if isinstance(v, (tuple, list, set, frozenset)) else [v]) if w is not None]
+    if isinstance(Expr, (Variable, Node)):
+        return [expr(~k.operator, Expr, k.right_operand()) | v if isinstance(k, Condition)
+                else (Expr != k if not isinstance(k, (tuple, list, set, frozenset)) else not_belong(Expr, k)) | v for k, v in t]
+    else:
+        assert all(type(Expr) == type(v) for k in Cases for v in (k if isinstance(k, (tuple, list, set, frozenset, range)) else [k]))
+        return [v for k, v in Cases.items() if
+                (not isinstance(k, (tuple, list, set, frozenset, range)) and Expr == k) or (isinstance(k, (tuple, list, set, frozenset, range)) and Expr in k)]
+        # assert False, "Bad construction with Match: the expression must be a variable or an expression involving a variable"
+
+
+def Iff(*args, meta=False):
+    """
+    Builds a meta-constraint Iff from the specified arguments.
+    For two constraints, the meta-constraint holds iff both of them hold, or none of them holds.
+
+    When the parameter 'meta' is not true, reification is employed.
+
+    :param args: a tuple of constraints
+    :param meta: true if a meta-constraint form must be really posted
+    :return: a meta-constraint Iff, or its reified form
+    :example:
+        # a bin is opened if and only if some item is put in it
+        x = VarArray(size=5, dom=range(3))  # x[i] is the bin in which the ith item is put
+        b = VarArray(size=3, dom={0, 1})  # b[j] is 1 iff the jth bin is opened
+
+        satisfy(
+           Sum(b) == 2,
+
+           [Iff(b[j] == 1, Exist(x[i] == j for i in range(5))) for j in range(3)]
+        )
+
+        # a solution: [0, 0, 0, 0, 1] [1, 1, 0]
+    :example:
+        # a meta-constraint Iff can combine global constraints and expressions
+        x = VarArray(size=4, dom=range(6))
+
+        satisfy(
+           # the sum of x is greater than 10 if and only if the values of x are all different
+           Iff(Sum(x) > 10, AllDifferent(x))
+        )
+
+        # a solution: [0, 0, 0, 0]
+    """
+    if meta:
+        return EIff(_wrap_intension_constraints(_complete_partial_forms_of_constraints(flatten(*args))))
+    return iff(*args)
+
+
+def Slide(*args, expression=None, circular=None, offset=None, collect=None):
+    """
+    Builds a meta-constraint Slide from the specified arguments.
+    A slide is a sequence of similar constraints, obtained by sliding the same constraint over a sequence of variables.
+
+    According to the specified constraints, the compiler may or may not succeed in generating a slide meta-constraint.
+
+    :param args: a tuple of constraints
+    :return: a meta-constraint Slide
+    :example:
+        # the values of x must be strictly increasing, by comparing each pair of consecutive variables
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           # the same constraint slides over the sequence, which the compiler may render as a compact meta-constraint
+           Slide(x[i] < x[i + 1] for i in range(3))
+        )
+
+        # a solution: [0, 1, 2, 3]
+    :example:
+        # with Slide, the same table constraint is posted on each pair of consecutive variables
+        n = 5
+        table = [(0, 1), (1, 2), (2, 0)]  # the allowed pairs of consecutive values
+        x = VarArray(size=n, dom=range(3))
+
+        satisfy(
+           Slide((x[i], x[i + 1]) in table for i in range(n - 1))
+        )
+
+        # a solution: [0, 1, 2, 0, 1]
+    """
+    if expression is not None:  # the meta-constraint is defined directly by the user
+        return ECtr(ConstraintSlide(*args, expression, circular, offset, collect))
+    # we cannot directly complete partial forms (because it is executed before the analysis of the parameters of satisfy
+    entities = _wrap_intension_constraints(flatten(*args))
+    checkType(entities, [ECtr, bool])
+    return ESlide([EToGather(entities)])
+
+
+def _root_node(arg):
+    # a node at the root of a constraint: an integer (a constant, after simplification) is posted as a constant (nothing or the constraint false),
+    # and not as an intension, and a 0/1 variable (as or(x,x) simplified) is posted as an equation, as a 0/1 variable given alone
+    if isinstance(arg, Node):
+        if arg.type == TypeNode.INT:
+            return ConstraintDummyConstant(arg.cnt)
+        if arg.type == TypeNode.VAR:
+            return _01_to_node(arg.cnt)
+        if arg.type == TypeNode.NOT and arg.cnt[0].type == TypeNode.VAR:  # ~x, for a 0/1 variable x, is posted as x = 0
+            return Node.build(TypeNode.EQ, arg.cnt[0].cnt, 0)
+    return arg
+
+
+def _01_to_node(arg):
+    if isinstance(arg, Variable):
+        assert arg.dom.is_binary()
+        return Node.build(TypeNode.EQ, arg, 1)  # transformed into a basic logical equation
+    if isinstance(arg, PartialConstraint):
+        if not isinstance(arg.constraint, ConstraintElement):  # TODO to be extended (other cases should be possible)
+            error("The component " + str(arg) + " is not a constraint: it must be subject to a condition, as in Sum(x) > 10")
+        assert all(isinstance(t, Variable) and t.dom.is_binary() for t in arg.constraint.arguments[TypeCtrArg.LIST].content)  # TODO to be extended
+        return arg == 1
+    return arg
+
+
+def _false_constraint():
+    # a constraint that cannot be satisfied (posted for the constant 0): the first variable of the model takes no value of its domain
+    x = next((v for e in VarEntities.items for v in ([e.variable] if isinstance(e, EVar) else e.flatVars)), None)
+    error_if(x is None, "A constraint is trivially false (constant 0), but the model has no variable")
+    warning("A constraint is trivially false (constant 0): the model is unsatisfiable")
+    return ECtr(ConstraintExtension([x], [], True, options.keep_hybrid, options.restrict_tables_wrt_domains))  # not _Extension(), which refuses an empty table
+
+
+def _group(*_args, block=False):
+    def _remove_dummy_constraints(tab):
+        if any(isinstance(v, ConstraintDummyConstant) for v in tab):
+            warning_if(any(isinstance(v, ConstraintDummyConstant) and v.val not in (0, 1) for v in tab), "It seems that there is a bad expression in the model")
+            return [_false_constraint() if isinstance(v, ConstraintDummyConstant) and v.val == 0 else v for v in tab if
+                    not isinstance(v, ConstraintDummyConstant) or v.val == 0]
+        return tab
+
+    def _block_reorder(_entities):
+        reordered_entities = []
+        g = []
+        for c in _entities:
+            if isinstance(c, ECtr) and c.blank_basic_attributes():
+                g.append(c)
+            else:
+                if len(g) != 0:
+                    reordered_entities.append(_group(g))
+                g.clear()
+                reordered_entities.append(c)
+        if len(g) != 0:
+            reordered_entities.append(_group(g))
+        return reordered_entities
+
+    tab = _remove_dummy_constraints([_root_node(v) for v in flatten(*_args)])
+    if len(tab) == 0:
+        return None
+    for i in range(len(tab)):
+        tab[i] = _01_to_node(tab[i])
+    entities = _complete_partial_forms_of_constraints(tab)
+    if any(isinstance(v, ConstraintDummyConstant) for v in entities):  # constants given by 'in' (as the count of no term in a set)
+        entities = _remove_dummy_constraints(entities)
+        if len(entities) == 0:
+            return None
+    entities = _wrap_intension_constraints(entities)
+    checkType(entities, [ECtr, ECtrs, EMetaCtr])
+    return EBlock(_block_reorder(entities)) if block else EToGather(entities)
+
+
+def satisfy_from_auxiliary(t):
+    if t is None:
+        t = []
+    to_post = _group(pc == var for (pc, var) in auxiliary().get_collected_and_clear())
+    if to_post is not None:
+        t.append(to_post)
+    to_post = _group(auxiliary().get_collected_raw_and_clear())
+    if to_post is not None:
+        t.append(to_post)
+    to_post = _group((index, aux) in table for (index, aux, table) in auxiliary().get_collected_extension_and_clear())
+    if to_post is not None:
+        t.append(to_post)
+    return EToSatisfy(t)
+
+
+def satisfy(*args, no_comment_tags_extraction=False):
+    """
+    Posts all constraints that are specified as arguments.
+    The solutions of the model must satisfy all the posted constraints; satisfy() can be called several times.
+
+    :param args: the different constraints to be posted
+    :param no_comment_tags_extraction: discard comments and tags (when compiling), if set to True
+    :return: an object wrapping the posted constraints
+    :example:
+        # the constraints are given as arguments of satisfy(), separated by commas
+        # the comments preceding them are kept (as notes) in the generated XCSP3 file
+        x = VarArray(size=10, dom=range(10))
+
+        satisfy(
+           # all the values must be different
+           AllDifferent(x),
+
+           # the sum of the first and last values must be greater than 6
+           x[0] + x[-1] > 6
+        )
+
+        # a solution: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    """
+
+    def _reorder(l):  # if constraints are given in (sub-)lists inside tuples; we flatten and reorder them to hopefully improve compactness
+        d = dict()
+        for tp in l:
+            if isinstance(tp, (tuple, list)):
+                for i, v in enumerate(tp):
+                    d.setdefault(i, []).append(v)
+            else:
+                d.setdefault(0, []).append(tp)
+        return [v for vs in d.values() for v in vs]
+
+    comments1, comments2, tags1, tags2 = comments_and_tags_of_parameters_of(function_name="satisfy", args=args, no_extraction=no_comment_tags_extraction)
+
+    t = []
+    for i, arg in enumerate(args):
+        if arg is None:
+            continue
+        if len(queue_in) > 0:  # ~(e in S) gives an integer (-2), with an expression 'in' waiting
+            check_no_negated_membership(arg if isinstance(arg, (list, tuple)) else (arg,))
+        arg = _root_node(arg)
+        if isinstance(arg, ConstraintDummyConstant):
+            if arg.val != 0:  # the constant 1 (true) is discarded
+                warning_if(arg.val != 1, "It seems that there is a bad expression in the model " + str(arg))
+                continue
+            arg = _false_constraint()
+        if isinstance(arg, (tuple, set, frozenset, types.GeneratorType)):
+            arg = list(arg)
+        if isinstance(arg, list) and any(v is None for v in arg):
+            # TODO: what if there is a trailing comma?
+            if len(arg) == len(comments2[i]):
+                comments2[i] = [c for i, c in enumerate(comments2[i]) if arg[i] is not None]
+            if len(arg) == len(tags2[i]):
+                tags2[i] = [c for i, c in enumerate(tags2[i]) if arg[i] is not None]
+            arg = [v for v in arg if v is not None]
+
+        if isinstance(arg, list) and len(arg) > 0:
+            if isinstance(arg[0], tuple):
+                arg = _reorder(arg)
+            elif isinstance(arg[0], list):  # do not work if the constraints involve the operator 'in'
+                # triple_list = all(isinstance(ar, list) and (len(ar) == 0 or isinstance(ar, (tuple, list))) for ar in arg)
+                # if triple_list:
+                #     arg = _reorder(flatten(arg))
+                # else:
+                for j, l in enumerate(arg):
+                    if isinstance(l, list) and len(l) > 0 and isinstance(l[0], tuple):
+                        arg[j] = _reorder(l)
+        arg = _01_to_node(arg)
+        assert isinstance(arg, (ECtr, EMetaCtr, ESlide, Node, bool, list)), "non authorized type " + str(arg) + " " + str(type(arg))
+        comment_at_2 = any(comment != '' for comment in comments2[i])
+        tag_at_2 = any(tag != '' for tag in tags2[i])
+        if isinstance(arg, (ECtr, EMetaCtr, ESlide)):  # case: simple constraint or slide
+            if isinstance(arg, ECtr) and isinstance(arg.constraint, ConstraintRefutation):  # refutations must be transformed
+                to_post = _group(arg.constraint.to_list())
+            else:
+                to_post = _complete_partial_forms_of_constraints([arg])[0]
+        elif isinstance(arg, Node):  # a predicate to be wrapped by a constraint (intension)
+            to_post = _Intension(arg)
+        elif isinstance(arg, bool):  # a Boolean representing the case of a partial constraint or a node with operator in {IN, NOT IN}
+            assert queue_in, "An argument of satisfy() before position " + str(i) + " is badly formed"
+            other, partial = queue_in.popleft()
+            to_post = _bool_interpretation_for_in(partial, other, arg)
+            if isinstance(to_post, list):
+                to_post = _group(to_post)
+            elif isinstance(to_post, ConstraintDummyConstant):  # a constant (as the count of no term in a set)
+                warning_if(to_post.val not in (0, 1), "It seems that there is a bad expression in the model " + str(to_post))
+                to_post = None if to_post.val != 0 else _false_constraint()
+        else:
+            assert isinstance(arg, list)
+            if any(isinstance(ele, ESlide) for ele in arg):  # Case: Slide
+                to_post = _group(arg, block=True)
+            elif comment_at_2 or tag_at_2:  # Case: block
+                if len(arg) == len(comments2[i]) - 1 == len(tags2[i]) - 1 and comments2[i][-1] == "" and tags2[i][-1] == "":
+                    # this avoids the annoying case where there is a comma at the end of the last line in a block
+                    comments2[i] = comments2[i][:-1]
+                    tags2[i] = tags2[i][:-1]
+                if len(arg) == len(comments2[i]) == len(tags2[i]):  # if comments are not too wildly put
+                    for j in range(len(arg)):
+                        if isinstance(arg[j], (ECtr, ESlide)):
+                            arg[j].note(comments2[i][j]).tag(tags2[i][j])
+                        else:  # if comments2[i][j] or tags2[i][j]: PB if we use this as indicated below
+                            # BE CAREFUL: if bool present _group must be executed systematically (otherwise, confusion between false and True possible)
+                            if isinstance(arg[j], list) and len(arg[j]) == 1:
+                                arg[j] = arg[j][0]
+                            if isinstance(arg[j], list) and len(arg[j]) > 0 and isinstance(arg[j][0], list):
+                                for k in range(len(arg[j])):
+                                    arg[j][k] = _group(arg[j][k])
+                                arg[j] = _group(arg[j], block=True).note(comments2[i][j]).tag(tags2[i][j])
+                            else:
+                                g = _group(arg[j])  # , block=True)
+                                arg[j] = g.note(comments2[i][j]).tag(tags2[i][j]) if g is not None else None
+                to_post = _group(arg, block=True)
+            else:  # Group
+                to_post = _group(arg)
+        if to_post is not None:
+            # to_post_aux = satisfy_from_auxiliary()
+            # if len(to_post_aux) > 0:
+            #     to_post = EBlock(flatten(to_post, to_post_aux))
+            t.append(to_post.note(comments1[i]).tag(tags1[i]))
+            # if isinstance(to_post, ESlide) and len(to_post.entities) == 1:
+            #     to_post.entities[0].note(comments1[i]).tag(tags1[i])
+    # return EToSatisfy(t)
+    return satisfy_from_auxiliary(t)
+
+
+''' Generic Constraints (intension, extension) '''
+
+
+def _Extension(*, scope, table, positive=True):
+    scope = flatten(scope)
+    error_if(len(scope) != len(set(scope)), "The variables of the scope of a table constraint must be distinct, which is not the case of " + str(scope))
+    checkType(scope, [Variable])
+    assert isinstance(table, list)
+    assert len(table) > 0, "A table must be a non-empty list of tuples or integers (or symbols)"
+    checkType(positive, bool)
+
+    if len(table) < 100 and any(isinstance(t, (list, types.GeneratorType)) for t in table):  # TODO hard coding (100)
+        new_table = []
+        for i, t in enumerate(table):
+            if isinstance(t, list):
+                new_table.append(tuple(t))
+            elif isinstance(t, types.GeneratorType):
+                new_table.extend(v for v in t)
+            else:
+                new_table.append(t)
+        table = new_table
+    if len(scope) == 1:
+        table = [v[0] if isinstance(v, tuple) and len(v) == 1 else v for v in table]
+        if not all(isinstance(v, int) if isinstance(scope[0], VariableInteger) else isinstance(v, str) for v in table):
+            error("The values of a unary table must be " + ("integers" if isinstance(scope[0], VariableInteger) else "symbols") + " for the variable "
+                  + str(scope[0]) + ", which is not the case of " + str(table))
+    else:  # if all(isinstance(x, VariableInteger) for x in scope):
+        if not options.safe_tables:
+            for i, t in enumerate(table):
+                if isinstance(t, (list)):  # , types.GeneratorType)):
+                    table[i] = t = tuple(t)
+                else:
+                    assert isinstance(t, tuple), str(t)
+                # we now manage shortcut expressions as in col(i) instead of eq(col(i)), and discard trivial ranges
+                if any(isinstance(v, (range, Node)) for v in t):
+                    table[i] = tuple(eq(v) if isinstance(v, Node) else v.start if isinstance(v, range) and len(v) == 1 else v for v in t)
+                if len(t) != len(scope):
+                    t = tuple(flatten(t))
+                    assert len(t) == len(scope), (
+                            "The length of each tuple must be the same as the arity (here, we have " + str(len(t)) + " vs " + str(len(scope)) + "). "
+                            + "Maybe a problem with slicing: you must for example write x[i:i+3,0] instead of x[i:i+3][0]")
+                    table[i] = t
+    return ECtr(ConstraintExtension(scope, table, positive, options.keep_hybrid, options.restrict_tables_wrt_domains))
+
+
+def Table(*, scope, supports=None, conflicts=None):
+    """
+    Builds and returns a constraint Table.
+    A table lists the combinations of values (tuples) that the variables can take (supports), or cannot take (conflicts).
+    It is usually posted with the operators 'in' and 'not in', as in (x[0], x[1]) in {(0, 1), (1, 2)}.
+
+    :param scope: the sequence of (distinct) involved variables
+    :param supports: the tuples seen as supports (positive table), given by any iterable (e.g., a set, a list or a generator)
+    :param conflicts: the tuples seen as conflicts (negative table), given by any iterable (e.g., a set, a list or a generator)
+
+    :return: a constraint Table (Extension)
+    :example:
+        # car configuration: the compatible combinations of engine, gearbox and colour
+        # the special value ANY (a star) means that any value is accepted for the column
+        x = VarArray(size=3, dom=range(4))
+
+        satisfy(
+           (x[0], x[1], x[2]) in {(0, 1, 2), (0, 2, 3), (1, ANY, 3), (2, 3, 0)}
+        )
+
+        # a solution: [0, 1, 2]
+    :example:
+        # the forbidden combinations (conflicts) can be given instead, by using the operator 'not in'
+        y = VarArray(size=2, dom=range(4))
+
+        satisfy(
+           (y[0], y[1]) not in {(0, 0), (1, 2), (3, 3)}
+        )
+
+        # a solution: [0, 1]
+    :example:
+        # the table can also be given by calling the function, with 'supports' or 'conflicts'
+        x = VarArray(size=3, dom=range(4))
+
+        satisfy(
+           Table(scope=x, supports={(0, 1, 2), (0, 2, 3), (1, 1, 3), (2, 3, 0)})
+        )
+
+        # a solution: [0, 1, 2]
+    """
+    scope = flatten(scope)
+    error_if(scope is None or len(scope) == 0, "Empty scope")
+    error_if((supports is None) == (conflicts is None), "Table() requires exactly one of the parameters supports and conflicts")
+    positive = supports is not None
+    table = supports if positive else conflicts
+    if isinstance(table, (str, bytes)) or not hasattr(table, "__iter__"):  # any iterable is accepted (e.g., enumerate(...)), except a string
+        error("The " + ("supports" if positive else "conflicts") + " of Table() must be given by an iterable, such as a list, a tuple, a set, a range "
+              + "or enumerate() (of tuples, or of values for a unary table), which is not the case of " + repr(table))
+    table = list(table)  # if isinstance(table, (tuple, set, frozenset, types.GeneratorType)) else table
+    if not positive and len(table) == 0:
+        return None
+    return _Extension(scope=scope, table=table, positive=positive)
+
+
+def _Intension(node):
+    checkType(node, Node)
+    # node= node.canonization(strong=True) // Good idea ?
+    ctr = ECtr(ConstraintIntension(node))
+    if ctr.blank_basic_attributes():
+        ctr.copy_basic_attributes_of(node)
+    node.mark_as_used()
+    return ctr
+
+
+def col(*args):
+    """
+    Builds and returns a node denoting the ith column of a hybrid tuple.
+
+    Hybrid (smart) tables accept, besides plain values, expressions of the form
+    op(col(i)) where op is a relational operator among eq, ne, lt, le, gt and ge,
+    and col(i) refers to the value of the tuple at index i. An offset can be
+    added, as in eq(col(i) + 1).
+
+    :param args: the index of the column
+    :return: a node denoting the specified column of a hybrid tuple
+    :example:
+        # hybrid (smart) table: some values of a tuple are given by conditions on the other columns
+        # here, the second operation must be performed on the same machine as the first one, but later
+        x = VarArray(size=4, dom=range(4))  # x[0] and x[2] are machines, x[1] and x[3] are times
+
+        satisfy(
+           x[0] != 0,
+
+           (x[0], x[1], x[2], x[3]) in [(ANY, ANY, col(0), gt(col(1))), (0, 0, ANY, ANY)]
+        )
+
+        # a solution: [1, 0, 1, 1]
+    """
+    assert len(args) == 1 and isinstance(args[0], int)
+    return Node(TypeNode.COL, args[0])
+
+
+def abs(arg):
+    """
+    Builds and returns a node 'abs' if the argument is a node or a variable of the model, and its usual absolute value otherwise.
+    The node represents the absolute value of the argument, as in abs(x[0] - x[1]) > 2 (a distance).
+
+    :return: either a node, root of a tree expression, or the absolute value of the specified argument
+    :example:
+        # all-interval series: the distances between successive notes must be all different
+        x = VarArray(size=5, dom=range(5))  # x[i] is the ith note of the series
+
+        satisfy(
+           AllDifferent(x),
+
+           AllDifferent(abs(x[i] - x[i + 1]) for i in range(4))
+        )
+
+        # a solution: [0, 4, 1, 3, 2]
+    """
+    if isinstance(arg, PartialConstraint):
+        arg = auxiliary().replace_partial_constraint(arg)
+    if isinstance(arg, Node) and arg.type == TypeNode.SUB:
+        return Node.build(TypeNode.DIST, arg.cnt)
+    return Node.build(TypeNode.ABS, arg) if isinstance(arg, (Node, Variable)) else absPython(arg)
+
+
+def min(*args, **kwargs):
+    """
+    Builds and returns a node 'min' if one argument is a node or a variable of the model, and the usual smallest item otherwise.
+    The node represents the smallest value among the arguments, as in z == min(x).
+
+    :return: either a node, root of a tree expression, or the smallest item of the specified arguments
+    :example:
+        # the delivery cannot start before the first vehicle is ready
+        x = VarArray(size=3, dom=range(20))  # x[i] is the time at which the ith vehicle is ready
+        z = Var(dom=range(20))  # z is the starting time of the delivery
+
+        satisfy(
+           x[0] == 8, x[1] == 5, x[2] == 11,
+
+           z == min(x)
+        )
+
+        # a solution: [8, 5, 11] 5
+    """
+    expanded = len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType))
+    if expanded:
+        args = [v for v in args[0]]
+    if any(isinstance(arg, (Variable, Node)) for arg in args):
+        if kwargs:
+            error("parameters not to be used when dealing with variables or nodes of the model")
+        return args[0] if len(args) == 1 else Node.build(TypeNode.MIN, *args)
+    return minPython(args, **kwargs) if expanded else minPython(*args, **kwargs)
+
+
+def max(*args, **kwargs):
+    """
+    Builds and returns a node 'max' if one argument is a node or a variable of the model, and the usual largest item otherwise.
+    The node represents the largest value among the arguments, as in z == max(x).
+    :return: either a node, root of a tree expression, or the largest item of the specified arguments
+    :example:
+         # the workshop closes when the last machine has finished
+         x = VarArray(size=3, dom=range(20))  # x[i] is the completion time of the ith machine
+         z = Var(dom=range(20))  # z is the closing time of the workshop
+
+         satisfy(
+            x[0] == 8, x[1] == 5, x[2] == 11,
+
+            z == max(x)
+        )
+
+        # a solution: [8, 5, 11] 11
+    """
+    expanded = len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType))
+    if expanded:
+        args = [v for v in args[0]]
+    if any(isinstance(arg, (Variable, Node)) for arg in args):
+        if kwargs:
+            error("parameters not to be used when dealing with variables or nodes of the model")
+        return args[0] if len(args) == 1 else Node.build(TypeNode.MAX, *args)
+    return maxPython(args, **kwargs) if expanded else maxPython(*args, **kwargs)
+
+
+def _check_no_membership_operand(name):
+    # an operand given by 'in' (with a table, an automaton or an MDD) is evaluated as a Boolean by Python: it cannot be an argument of the function
+    if len(queue_in) > 0:
+        error("An operand given by 'in' (as x in {1, 2}, or x in an automaton) is evaluated as a Boolean by Python, and cannot be an argument of "
+              + name + "(): use belong() for a set of values, or post the constraint separately")
+
+
+def xor(*args):
+    """
+    Builds and returns a node 'xor', root of a tree expression where specified arguments are children.
+    For two arguments, the expression holds iff exactly one of them holds (with only one argument, this argument is returned).
+    Without any parent, it becomes a constraint.
+
+    :return: a node, root of a tree expression or the argument if there is only one
+    :example:
+        # exactly one of the two options must be selected for each product
+        b = VarArray(size=[4, 2], dom={0, 1})  # b[i][k] is 1 iff the kth option is selected for the ith product
+
+        satisfy(
+           [xor(b[i][0] == 1, b[i][1] == 1) for i in range(4)]
+        )
+
+        # a solution: [0, 1, 0, 1, 0, 1, 0, 1]
+    """
+    if len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType)):
+        args = tuple(args[0])
+    check_no_negated_membership(args)
+    args = [v if not isinstance(v, (tuple, list)) else v[0] if len(v) == 1 else conjunction(v) for v in args]
+    if any(isinstance(v, bool) for v in args):
+        _check_no_membership_operand("xor")
+        inverted = sum(1 for v in args if v is True) % 2 == 1  # each True inverts the result, while False has no effect
+        args = [v for v in args if not isinstance(v, bool)]
+        if len(args) == 0:
+            return ConstraintDummyConstant(1 if inverted else 0)
+        res = xor(*args) if len(args) > 1 else args[0]
+        return ~res if inverted else res
+    return args[0] ^ args[1] if len(args) == 2 else Node.build(TypeNode.XOR, *args) if len(args) > 1 else args[0]
+
+
+def iff(*args):
+    """
+    Builds and returns a node 'iff', root of a tree expression where specified arguments are children.
+    For two arguments, the expression holds iff both of them hold, or none of them holds.
+    Without any parent, it becomes a constraint.
+
+    :return: a node, root of a tree expression
+    :example:
+        # an employee works on a day if and only if a shift (different from the day off 0) is assigned
+        x = VarArray(size=7, dom=range(3))  # x[d] is the shift on day d
+        b = VarArray(size=7, dom={0, 1})  # b[d] is 1 iff the employee works on day d
+
+        satisfy(
+           Sum(b) == 5,
+
+           [iff(b[d] == 1, x[d] != 0) for d in range(7)]
+        )
+
+        # a solution: [0, 0, 1, 1, 1, 1, 1] [0, 0, 1, 1, 1, 1, 1]
+    """
+    if len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType)):
+        args = tuple(args[0])
+    check_no_negated_membership(args)
+    error_if(len(args) < 2, "iff() must have at least two arguments (possibly given in a list), which is not the case of " + str(len(args)))
+
+    if any(isinstance(v, bool) for v in args):
+        _check_no_membership_operand("iff")
+        booleans = {v for v in args if isinstance(v, bool)}
+        others = [v if not isinstance(v, (tuple, list)) else v[0] if len(v) == 1 else conjunction(v) for v in args if not isinstance(v, bool)]
+        if len(booleans) == 2:  # True and False cannot be equivalent
+            return ConstraintDummyConstant(0)
+        if len(others) == 0:
+            return ConstraintDummyConstant(1)
+        # all the arguments being equivalent, the other arguments must have the value of the Boolean
+        return conjunction(others) if True in booleans else conjunction(~v for v in others)
+
+    res = manage_global_indirection(*args)
+    if res is None:
+        return Iff(*args, meta=True)
+    res = [v if not isinstance(v, (tuple, list)) else v[0] if len(v) == 1 else conjunction(v) for v in res]
+    return res[0] == res[1] if len(res) == 2 else Node.build(TypeNode.IFF, *res)
+
+
+def imply(*args):
+    """
+    Builds and returns a node 'imply', root of a tree expression where specified arguments are children.
+    The expression holds iff the second argument holds whenever the first one holds.
+    Without any parent, it becomes a constraint.
+
+    :param args: a tuple of two arguments
+    :return: a node, root of a tree expression
+    :example:
+        # a machine that is used must be switched on beforehand
+        b = VarArray(size=4, dom={0, 1})  # b[i] is 1 iff the ith machine is used
+        s = VarArray(size=4, dom={0, 1})  # s[i] is 1 iff the ith machine is switched on
+
+        satisfy(
+           Sum(b) == 2,
+
+           [imply(b[i] == 1, s[i] == 1) for i in range(4)]
+        )
+
+        # a solution: [0, 0, 1, 1] [0, 0, 1, 1]
+    """
+    error_if(len(args) != 2, "imply() must have two arguments (a condition and a consequence), which is not the case of " + str(len(args)))
+    check_no_negated_membership(args)
+    cnd, tp = args  # condition and then part
+    if isinstance(cnd, bool) or isinstance(tp, bool):
+        _check_no_membership_operand("imply")
+        if cnd is False or tp is True:
+            return ConstraintDummyConstant(1)  # True
+        if cnd is True:
+            return ConstraintDummyConstant(0) if tp is False else tp
+        assert tp is False
+        return ~cnd  # cnd -> False is the negation of cnd
+    if isinstance(tp, (tuple, list, set, frozenset)):
+        tp = list(tp)  # to transform sets into lists
+        assert len(tp) >= 1
+        return imply(cnd, tp[0]) if len(tp) == 1 else [imply(cnd, v) for v in tp]
+    if isinstance(tp, PartialConstraint):
+        tp = Node.build(TypeNode.EQ, auxiliary().replace_partial_constraint(tp), 1)
+    res = manage_global_indirection(cnd, tp)
+    if res is None:
+        return If(cnd, Then=tp)
+    # if len(res) == 2 and isinstance(res[1], (tuple, list, set, frozenset)):
+    #     return [imply(res[0], v) for v in res[1]]
+    res = [v if not isinstance(v, (tuple, list)) else v[0] if len(v) == 1 else conjunction(v) for v in res]
+    return Node.build(TypeNode.IMP, *res)
+
+
+def ift(test, Then, Else):
+    """
+    Builds and returns a node 'ifthenelse', root of a tree expression where specified arguments are children.
+    The expression takes the value of Then when the test holds, and the value of Else otherwise, as in c == ift(x == 0, 3, 7).
+    Without any parent, it becomes a constraint.
+
+    :param test: the condition expression
+    :param Then: the Then part
+    :param Else: the Else part
+
+    :return: a node, root of a tree expression
+    :example:
+        # the cost of a task depends on the machine that performs it
+        x = VarArray(size=3, dom=range(2))  # x[i] is the machine performing the ith task
+        c = VarArray(size=3, dom=range(10))  # c[i] is the cost of the ith task
+
+        satisfy(
+           Sum(x) == 2,
+
+           [c[i] == ift(x[i] == 0, 3, 7) for i in range(3)]
+        )
+
+        # a solution: [0, 1, 1] [3, 7, 7]
+    """
+    # assert len(args) == 3
+    # test, Then, Else = args  # condition, then part and else part
+    if isinstance(test, ConstraintDummyConstant):
+        assert test.val in (0, 1)
+        return Then if test.val == 1 else Else
+    if isinstance(test, bool):
+        _check_no_membership_operand("ift")
+        return Then if test else Else
+
+    if Else is None:
+        return imply(test, Then)
+    if isinstance(test, (tuple, list)):
+        assert len(test) == 1, str(test)
+        test = test[0]
+    btp = isinstance(Then, (tuple, list, set, frozenset))
+    if btp:
+        Then = list(Then)
+        assert len(Then) >= 1
+        if len(Then) == 1:
+            return ift(test, Then[0], Else)
+    etp = isinstance(Else, (tuple, list, set, frozenset))
+    if etp:
+        Else = list(Else)
+        assert len(Else) >= 1
+        if len(Else) == 1:
+            return ift(test, Then, Else[0])
+    if btp or etp:
+        Then, Else = Then if isinstance(Then, list) else [Then], Else if isinstance(Else, list) else [Else]
+        # # we compute the negation of cnd
+        # if isinstance(cnd, Node) and ~cnd.type is not None:
+        #     rcnd = Node(~cnd.type, cnd.cnt)
+        # elif isinstance(cnd, Variable):
+        #     rcnd = var(cnd.id) if cnd.negation else ~cnd
+        # else:
+        #     rcnd = ~cnd
+        return [imply(test, v) for v in Then] + [test | v for v in Else]
+    res = manage_global_indirection(test, Then, Else, also_pc=True)
+    if res is None:
+        return If(test, Then=Then, Else=Else, meta=True)
+    res = [v if not isinstance(v, (tuple, list)) else v[0] if len(v) == 1 else conjunction(v) for v in res]
+    assert len(res) == 3
+    if isinstance(res[0], int):
+        assert res[0] in (0, 1)
+        return res[1] if res[0] == 1 else res[2]
+    return Node.build(TypeNode.IF, *res)
+
+
+def _check_belong_arguments(function, x, values):  # function is the name of the calling function: belong or not_belong
+    if isinstance(x, int):
+        if not isinstance(values, (tuple, list)) or any(not isinstance(y, Variable) for y in values if y is not None):
+            error("When the first argument of " + function + "() is an integer, the second argument must be a list of variables, which is not the case of "
+                  + str(values))
+    else:
+        if not isinstance(x, Variable):
+            error("The first argument of " + function + "() must be a variable or an integer, which is not the case of " + str(x)
+                  + " (for an expression, the operator " + ("in" if function == "belong" else "not in") + " can be used)")
+        if not isinstance(values, (int, range, tuple, list, set, frozenset)) or (
+                isinstance(values, (tuple, list, set, frozenset)) and any(not isinstance(v, int) for v in values)):
+            error("The second argument of " + function + "() must be an integer, a range or a collection of integers, which is not the case of " + str(values))
+
+
+def belong(x, values):
+    """
+    Builds and returns a Boolean expression that holds iff the specified term belongs to the specified values.
+
+    When the first argument is an integer and the second one a list of variables, the expression holds iff
+    at least one of these variables is assigned this integer.
+
+    :param x: a variable, or an integer
+    :param values: a set of integers (possibly given by a range), or a list of variables
+    :return: a Boolean expression that holds iff the term belongs to the values
+    :example:
+        # the meetings of the group must be held on a working day, on three different days
+        x = VarArray(size=3, dom=range(7))  # x[i] is the day of the ith meeting
+
+        satisfy(
+           AllDifferent(x),
+
+           [belong(x[i], range(5)) for i in range(3)]
+        )
+
+        # a solution: [0, 1, 2]
+    """
+    if isinstance(x, PartialConstraint):
+        x = auxiliary().replace_partial_constraint(x)
+    _check_belong_arguments("belong", x, values)
+    if isinstance(x, int):
+        return disjunction(y == x for y in values if y is not None)  # None (e.g., a hole of an array) is discarded
+    if isinstance(values, range):
+        if values.step != 1 or len(values) < 8 or values.start not in x.dom or (values.stop - 1) not in x.dom:
+            values = list(values)
+        else:
+            return Node.in_range(x, values)
+    elif isinstance(values, int):
+        values = [values]
+    values = sorted(set(v for v in values if v in x.dom))  # values outside the domain of x are discarded
+    if len(values) == 0:
+        return ConstraintDummyConstant(0)
+    if len(values) == len(x.dom.all_values()):
+        return ConstraintDummyConstant(1)
+    if len(values) == 1:
+        return x if x.dom.is_binary() and values[0] == 1 else Node.build(EQ, x, values[0])
+    if values[-1] - values[0] + 1 == len(values) >= 8:
+        return Node.in_range(x, range(values[0], values[-1] + 1))
+    return Node.build(IN, x, Node.build(SET, values))
+
+
+def not_belong(x, values):
+    """
+    Builds and returns a Boolean expression that holds iff the specified term does not belong to the specified values.
+
+    When the first argument is an integer and the second one a list of variables, the expression holds iff
+    none of these variables is assigned this integer.
+
+    :param x: a variable, or an integer
+    :param values: a set of integers (possibly given by a range), or a list of variables
+    :return: a Boolean expression that holds iff the term does not belong to the values
+    :example:
+        # no delivery can be planned during the week-end, and no two deliveries on the same day
+        x = VarArray(size=3, dom=range(7))  # x[i] is the day of the ith delivery
+
+        satisfy(
+           AllDifferent(x),
+
+           [not_belong(x[i], [5, 6]) for i in range(3)]
+        )
+
+        # a solution: [0, 1, 2]
+    """
+    if isinstance(x, PartialConstraint):
+        x = auxiliary().replace_partial_constraint(x)
+    _check_belong_arguments("not_belong", x, values)
+    if isinstance(x, int):
+        return conjunction(y != x for y in values if y is not None)  # None (e.g., a hole of an array) is discarded
+    if isinstance(values, range):
+        if values.step != 1 or len(values) < 8 or values.start not in x.dom or (values.stop - 1) not in x.dom:
+            values = list(values)
+        else:
+            return Node.not_in_range(x, values)
+    elif isinstance(values, int):
+        values = [values]
+    values = sorted(set(v for v in values if v in x.dom))  # values outside the domain of x are discarded
+    if len(values) == 0:
+        return ConstraintDummyConstant(1)
+    if len(values) == len(x.dom.all_values()):
+        return ConstraintDummyConstant(0)
+    if len(values) == 1:
+        return x if x.dom.is_binary() and values[0] == 0 else Node.build(NE, x, values[0])
+    if values[-1] - values[0] + 1 == len(values) >= 8:
+        return Node.not_in_range(x, range(values[0], values[-1] + 1))
+    return Node.build(NOTIN, x, Node.build(SET, values))
+
+
+def expr(operator, *args):
+    """
+    Builds and returns a node, root of a tree expression where specified arguments are children.
+    The type of the new node is given by the specified operator.
+    When it is a string, it is the name of an operator of XCSP3, as in "add", "mul", "abs", "and" or "or"; the comparison
+    operators are also accepted in their symbolic form: "<" for "lt", "<=" for "le", ">=" for "ge", ">" for "gt",
+    "=" or "==" for "eq", and "!=" or "<>" for "ne".
+    Without any parent, it becomes a constraint.
+
+    :param operator: a string, or a constant from TypeNode or a constant from TypeConditionOperator or TypeOrderedOperator
+    :return: a node, root of a tree expression
+    :example:
+        # building an expression from the name of an operator (useful when the operator comes from data)
+        x = VarArray(size=3, dom=range(10))
+
+        satisfy(
+           expr("lt", x[0], x[1]),
+
+           expr("eq", x[2], expr("add", x[0], x[1]))
+        )
+
+        # a solution: [0, 1, 1]
+    """
+    try:
+        tn = TypeNode.value_of(operator)  # None when operator is not of a type that can be converted into a TypeNode
+    except KeyError:  # an unknown name
+        tn = None
+    error_if(tn is None, "The first argument of expr() must be an operator (a string such as \"lt\" or \"add\", or a TypeNode), which is not the case of "
+             + repr(operator))
+    return Node.build(operator, *args)
+
+
+def conjunction(*args):
+    """
+    Builds and returns a node 'and', root of a tree expression where specified arguments are children.
+    The expression holds iff all the arguments hold.
+    Without any parent, it becomes a constraint.
+
+    :return: a node, root of a tree expression
+    :example:
+        # a room is suitable when all the required equipments are present in it
+        b = VarArray(size=4, dom={0, 1})  # b[k] is 1 iff the kth equipment is present in the room
+        required = [0, 2, 3]
+
+        satisfy(
+           Sum(b) == 3,
+
+           conjunction(b[k] == 1 for k in required)
+        )
+
+        # a solution: [1, 0, 1, 1]
+    """
+
+    # return Count(manage_global_indirection(*args)) == len(args)
+    # t = flatten(args)
+    # if len(t) > 3:
+    #     return Count(t) == len(t)
+
+    if len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType)):
+        args = tuple(args[0])
+    check_no_negated_membership(args)
+    if len(queue_in) == 0:
+        args = [v for v in args if v is not True]
+        if any(v is False for v in args):
+            return ConstraintDummyConstant(0)
+
+    res = _simplify_expression(args, False)
+    if isinstance(res, ConstraintDummyConstant):
+        return res
+    t = manage_global_indirection(*res)
+    return And(*res, meta=True) if t is None else Node.conjunction(t)  # (a meta-constraint only when explicitly asked for, #239)
+
+
+def both(this, that):
+    """
+    Builds and returns a node 'and', root of a tree expression where the two specified arguments are children.
+    The expression holds iff the two arguments hold.
+    Without any parent, it becomes a constraint.
+
+    :param this: the first argument (an expression or a constraint), or None
+    :param that: the second argument (an expression or a constraint), or None
+    :return: a node, root of a tree expression (the other argument if one of them is None)
+    :example:
+        # a task is critical when it is long and scheduled late
+        s = Var(dom=range(20))  # s is the starting time of the task
+        d = Var(dom=range(10))  # d is its duration
+
+        satisfy(
+           both(d >= 5, s >= 10)
+        )
+
+        # a solution: [10]
+    """
+    check_no_negated_membership((this, that))
+    if this is None:
+        return that
+    if that is None:
+        return this
+    res = _simplify_expression([this, that], False)
+    if isinstance(res, ConstraintDummyConstant):
+        return res
+    assert len(res) in (1, 2)
+    if len(res) == 1:
+        return res[0]
+    t = manage_global_indirection(*res)
+    return And(*res, meta=True) if t is None else Node.conjunction(t)  # res[0] & res[1] (a meta-constraint only when explicitly asked for, #239)
+
+
+def disjunction(*args):
+    """
+    Builds and returns a node 'or', root of a tree expression where specified arguments are children.
+    The expression holds iff at least one of the arguments holds.
+    Without any parent, it becomes a constraint.
+
+    :return: a node, root of a tree expression
+    :example:
+        # the visit must be assigned to one of the available guides
+        x = Var(dom=range(6))  # x is the guide assigned to the visit
+        available = [1, 3, 4]
+
+        satisfy(
+           disjunction(x == g for g in available)
+        )
+
+        # a solution: [1]
+    """
+    if len(args) == 1 and isinstance(args[0], (tuple, list, set, frozenset, types.GeneratorType)):
+        args = tuple(args[0])
+    check_no_negated_membership(args)
+    if len(queue_in) == 0:
+        args = [v for v in args if v is not False]
+        if any(v is True for v in args):
+            return ConstraintDummyConstant(1)
+
+    res = _simplify_expression(args, True)
+    if isinstance(res, ConstraintDummyConstant):
+        return res
+    t = manage_global_indirection(*res)
+    return Or(*res, meta=True) if t is None else Node.disjunction(t)  # (a meta-constraint only when explicitly asked for, #239)
+
+
+def either(this, that):
+    """
+    Builds and returns a node 'or', root of a tree expression where the two specified arguments are children.
+    The expression holds iff at least one of the two arguments holds.
+    Without any parent, it becomes a constraint.
+
+    :param this: the first argument (an expression or a constraint), or None
+    :param that: the second argument (an expression or a constraint), or None
+    :return: a node, root of a tree expression (the other argument if one of them is None)
+    :example:
+        # two tasks sharing the same machine must be scheduled one before the other
+        s = VarArray(size=2, dom=range(20))  # s[i] is the starting time of the ith task
+        durations = [4, 3]
+
+        satisfy(
+           either(s[0] + durations[0] <= s[1], s[1] + durations[1] <= s[0])
+        )
+
+        # a solution: [0, 4]
+    """
+    check_no_negated_membership((this, that))
+    if this is None:
+        return that
+    if that is None:
+        return this
+    res = _simplify_expression([this, that], True)
+    if isinstance(res, ConstraintDummyConstant):
+        return res
+    assert len(res) in (1, 2)
+    if len(res) == 1:
+        return res[0]
+    t = manage_global_indirection(*res)
+    return Or(*res, meta=True) if t is None else Node.disjunction(t)  # res[0] | res[1] (a meta-constraint only when explicitly asked for, #239)
+
+
+''' Language-based Constraints '''
+
+
+def _check_scope_and_labels_of_diagram(scope, diagram, name):  # name is the name of the constraint (Regular or Mdd)
+    error_if(len(scope) == 0, "The scope of the constraint " + name + " must not be empty")
+    if all(isinstance(x, VariableInteger) for x in scope):
+        expected = int
+    elif all(isinstance(x, VariableSymbolic) for x in scope):
+        expected = str
+    else:
+        return
+    label_types = diagram.label_types()  # computed once for the diagram
+    if not (label_types & ({str} if expected is int else {int, bool})) and not (label_types & {set, frozenset}):
+        return  # no label of the other type (the labels given by ranges are conditions on integers)
+    for (q1, label, q2) in diagram.transitions:
+        for v in [label] if isinstance(label, (int, str)) else label if isinstance(label, (set, frozenset)) else []:  # ranges (conditions) are integers
+            if not isinstance(v, expected):
+                error("The label " + repr(v) + " of the transition " + repr((q1, label, q2)) + " is " + ("a symbol" if expected is int else "an integer")
+                      + ", which is not possible for the " + (
+                          "integer" if expected is int else "symbolic") + " variables of the scope of the constraint " + name)
+
+
+def Regular(*, scope, automaton):
+    """
+    Builds and returns a constraint Regular.
+    The sequence of values assigned to the variables must be a word recognized by the specified automaton.
+
+    :param scope: the sequence of (distinct) involved variables
+    :param automaton: the automaton defining the semantics of the constraint
+
+    :return: a constraint Regular
+    :example:
+        # rostering: the sequence of shifts of an employee must follow the rules given by an automaton
+        # here, a night shift (2) must be followed by a day off (0), and work (1) cannot last more than 3 days
+        transitions = [("q0", 0, "q0"), ("q0", 1, "q1"), ("q0", 2, "q3"), ("q1", 0, "q0"), ("q1", 1, "q2"),
+                       ("q2", 0, "q0"), ("q2", 1, "q3"), ("q3", 0, "q0")]
+        automaton = Automaton(start="q0", final=["q0", "q1", "q2", "q3"], transitions=transitions)
+        x = VarArray(size=7, dom=range(3))  # x[d] is the shift of the employee on day d
+
+        satisfy(
+           Count(x, value=0) == 2,
+
+           Regular(scope=x, automaton=automaton)
+        )
+
+        # a solution: [0, 1, 1, 0, 1, 1, 1]
+    """
+    scope = flatten(scope)
+    checkType(scope, [Variable])
+    checkType(automaton, Automaton)
+    _check_scope_and_labels_of_diagram(scope, automaton, "Regular")
+    return ECtr(ConstraintRegular(scope, automaton))
+
+
+def Mdd(*, scope, mdd):
+    """
+    Builds and returns a constraint MDD.
+
+    :param scope: the sequence of (distinct) involved variables
+    :param mdd: the multi-decision diagram defining the semantics of the constraint
+
+    :return: a constraint MDD
+    :example:
+        # the tuples allowed for the variables are compactly given by a diagram (MDD)
+        # note that the constraint is posted by using the operator 'in' with an object MDD
+        x = VarArray(size=3, dom=range(3))
+        m = MDD([("r", 0, "n1"), ("r", 1, "n2"), ("n1", 2, "n3"), ("n2", 2, "n3"), ("n3", 0, "t"), ("n3", 1, "t")])
+
+        satisfy(
+           x in m
+        )
+
+        # a solution: [0, 2, 0]
+    """
+    scope = flatten(scope)
+    checkType(scope, [Variable])
+    checkType(mdd, MDD)
+    _check_scope_and_labels_of_diagram(scope, mdd, "Mdd")
+    error_if(mdd.depth() != len(scope), "The paths of the MDD must have the length of the scope (" + str(len(scope)) + "), which is not the case ("
+             + str(mdd.depth()) + ")")
+    return ECtr(ConstraintMdd(scope, mdd))
+
+
+''' Comparison-based Constraints '''
+
+
+def _excepting_values(excepting, name):
+    """
+    Returns the values given by the parameter excepting of AllDifferent(), AllEqual() and NValues() (whose name is given for the messages): an
+    integer, or an enumeration of integers (a list, a tuple, a set or a range, which cannot be nested), each value being given once. The values are
+    returned in increasing order, and None is returned when there is no value (excepting=None or an empty collection), so that no element <except>
+    is generated.
+    """
+    if excepting is None:
+        return None
+    values = list(excepting) if isinstance(excepting, (list, tuple, set, frozenset, range)) else [excepting]
+    if any(not isinstance(v, int) or isinstance(v, bool) for v in values):
+        error("The parameter excepting of " + name + "() must be given an integer, or an enumeration (list, tuple, set, range) of integers, which is not "
+              "the case of " + str(excepting))
+    if len(set(values)) < len(values):
+        error("A value is given several times in the parameter excepting of " + name + "(), which is not allowed: " + str(excepting))
+    return sorted(values) if len(values) > 0 else None
+
+
+def _excepting_tuples(excepting, name):
+    """
+    Returns the tuples given by the parameter excepting of AllDifferentList() and AllEqualList() (whose name is given for the messages): a tuple
+    (or a list, or a range) of integers, or a collection (list, tuple, set) of such tuples, each tuple being given once. The tuples are returned in
+    increasing (lexicographic) order, and None is returned when there is no tuple (excepting=None or an empty collection).
+    """
+    if excepting is None:
+        return None
+    if not isinstance(excepting, (list, tuple, set, frozenset, range)):
+        error("The parameter excepting of " + name + "() must be given a tuple of integers, or a collection of such tuples, which is not the case of "
+              + str(excepting))
+    elements = list(excepting)
+    several = len(elements) > 0 and all(isinstance(e, (list, tuple, range)) for e in elements)
+    tuples = [tuple(e) for e in elements] if several else [tuple(elements)] if len(elements) > 0 else []
+    if any(not isinstance(v, int) or isinstance(v, bool) for t in tuples for v in t):
+        error("The parameter excepting of " + name + "() must be given tuples of integers, which is not the case of " + str(excepting))
+    if len(set(tuples)) < len(tuples):
+        error("A tuple is given several times in the parameter excepting of " + name + "(), which is not allowed: " + str(excepting))
+    return sorted(tuples) if len(tuples) > 0 else None
+
+
+def _integers_of(arg):
+    """
+    Returns the argument with any constant (ConstraintDummyConstant) replaced by its value, also inside lists and tuples (rebuilt only when
+    they contain a constant); a generator is replaced by the list of its elements (because it is consumed when looking for constants)
+    """
+    if isinstance(arg, ConstraintDummyConstant):
+        return arg.val
+    if isinstance(arg, types.GeneratorType):
+        return [_integers_of(v) for v in arg]
+    if isinstance(arg, (list, tuple)):
+        t = [_integers_of(v) for v in arg]
+        if any(u is not v for u, v in zip(t, arg)):
+            return t if isinstance(arg, list) else tuple(t)
+    return arg
+
+
+def _constants_as_integers(f):
+    """
+    Decorator of the functions of global constraints: any constant (ConstraintDummyConstant) given in the arguments, as c[i] for a list c of
+    identical integers, is replaced by its value, as an integer
+    """
+
+    @functools.wraps(f)
+    def _constants_as_integers_wrapper(*args, **kwargs):
+        return f(*[_integers_of(arg) for arg in args], **{k: _integers_of(v) for k, v in kwargs.items()})
+
+    decorator_wrappers.add(_constants_as_integers_wrapper.__code__)  # the frames of the wrapper are ignored by the inspector
+    return _constants_as_integers_wrapper
+
+
+@_constants_as_integers
+def AllDifferent(term, *others, excepting=None, matrix=False):
+    """
+    Builds and returns a constraint AllDifferent.
+    The terms (typically, variables) must all take different values; the values given by 'excepting' can be repeated.
+
+    :param term: the (first) term, typically a list of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param excepting: the value(s) that must be ignored (None, most of the time)
+    :param matrix: if True, the matrix version must be considered
+    :return: a constraint AllDifferent
+    :example:
+        # Sudoku: the values of each row, of each column and of each block must be all different
+        x = VarArray(size=[9, 9], dom=range(1, 10))
+
+        satisfy(
+           [AllDifferent(row) for row in x],
+
+           [AllDifferent(col) for col in columns(x)],
+
+           [AllDifferent(x[i:i + 3, j:j + 3]) for i in (0, 3, 6) for j in (0, 3, 6)]
+        )
+
+        # a solution: [1, 2, 3, 4, 5, 6, 7, 8, 9, 4, 5, 6, 7, 8, 9, 1, 2, 3, 7, 8, 9, 1, 2, 3, ...]
+    :example:
+        # with 'excepting', when a value (here, 0) means 'no resource' and can then be repeated
+        y = VarArray(size=8, dom=range(5))  # y[i] is the machine assigned to the ith job (0 meaning none)
+
+        satisfy(
+           Count(y, value=0) == 4,  # four jobs are not assigned any machine
+
+           AllDifferent(y, excepting=0)
+        )
+
+        # a solution: [0, 0, 0, 0, 1, 2, 3, 4]
+    :example:
+        # with 'matrix', the values on each row and on each column of the matrix must be all different
+        # this is the Latin square problem (a Sudoku without the constraints on the blocks)
+        x = VarArray(size=[4, 4], dom=range(4))
+
+        satisfy(
+           AllDifferent(x, matrix=True)
+        )
+
+        # a solution: [0, 1, 2, 3, 1, 0, 3, 2, 2, 3, 0, 1, 3, 2, 1, 0]
+    """
+    error_if(term is None, "AllDifferent() requires variables (or expressions), which is not the case of None")
+    excepting = _excepting_values(excepting, "AllDifferent")
+    if matrix:
+        error_if(len(others) > 0,
+                 "With matrix=True, AllDifferent() requires a single argument (the matrix), which is not the case of " + str(1 + len(others)) + " arguments")
+        term = list(term) if isinstance(term, types.GeneratorType) else term
+        if not isinstance(term, (list, tuple)) or any(not isinstance(row, (list, tuple)) for row in term):
+            error("With matrix=True, AllDifferent() requires a two-dimensional list of variables (a list of rows), which is not the case of " + str(term))
+        matrix = [flatten(row) for row in term]
+        assert all(len(row) == len(matrix[0]) for row in matrix), "The matrix id badly formed"
+        assert all(checkType(t, [Variable]) for t in matrix)
+        if not options.mini:
+            return ECtr(ConstraintAllDifferentMatrix(matrix, excepting))
+        else:
+            return [AllDifferent(row) for row in matrix] + [AllDifferent(col) for col in columns(matrix)]
+    terms = flatten(term, others)
+    if len(terms) == 0 or (len(terms) == 1 and isinstance(terms[0], (Variable, Node))):  # integers alone are reported just below
+        return None
+    V = sorted(term for term in terms if isinstance(term, int))
+    if len(V) > 0:
+        error_if(len(V) == len(terms),
+                 "AllDifferent() requires at least one variable (or expression), and not only integers, which is not the case of " + str(terms))
+        if len(V) != len(set(V)):
+            return _false_constraint()  # at least two identical values
+        terms = [term for term in terms if not isinstance(term, int)]
+        satisfy(not_belong(term, V) for term in terms)
+    checkType(terms, ([Variable, Node]))
+    # a term given several times is reported: the terms are compared through their canonical forms (sorting the operands of symmetric operators),
+    # which are costly to compute, and so, only computed for the terms involving the same variables (== being redefined for building expressions)
+    groups = {}
+    for t in terms:
+        groups.setdefault(frozenset((id(t),)) if isinstance(t, Variable) else frozenset(id(x) for x in t.list_of_vars()), []).append(t)
+    for group in (g for g in groups.values() if len(g) > 1):
+        seen = set()
+        for t in group:
+            key = str(t) if isinstance(t, Variable) else str(t.canonization())
+            if key in seen:
+                if isinstance(t, Variable):
+                    error("A variable cannot be given several times to AllDifferent(), which is the case of " + str(t))
+                else:
+                    error(
+                        "An expression cannot be given several times to AllDifferent() (possibly with its operands in another order), which is the case of " + str(
+                            t))
+            seen.add(key)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms, nodes_too=options.mini)  # only if mini
+    return ECtr(ConstraintAllDifferent(terms, excepting))
+
+
+def _check_lists_of_list_constraint(name, term, others, excepting):
+    """
+    Returns the lists of variables given to AllDifferentList() or AllEqualList() (whose name is specified), after checking them:
+    at least one list, no hole, lists of the same length, and tuples of excepting of the same length as the lists
+    """
+    error_if(term is None, name + "() requires lists of variables, which is not the case of None")
+    if isinstance(term, types.GeneratorType):
+        term = [v for v in term]
+    elif len(others) > 0:
+        term = list((term,) + others)
+    lists = [flatten(v, keep_none=True) for v in term]
+    error_if(len(lists) == 0, name + "() requires lists of variables, which is not the case of " + str(term))
+    for t in lists:
+        if any(v is None for v in t):
+            error("The lists given to " + name + "() cannot contain None (e.g., a hole of an array), which is the case of " + str(t))
+    assert all(checkType(t, [Variable]) for t in lists)
+    for t in lists:
+        if len(t) != len(lists[0]):
+            error("The lists given to " + name + "() must have the same length, which is not the case of " + str(lists[0]) + " and " + str(t))
+    several = isinstance(excepting, (tuple, list, set, frozenset)) and len(excepting) > 0 and all(isinstance(e, (tuple, list)) for e in excepting)
+    tuples = excepting if several else [excepting] if isinstance(excepting, (tuple, list, range)) and len(excepting) > 0 else []
+    for e in tuples:
+        if len(e) != len(lists[0]):
+            error("The tuples of excepting given to " + name + "() must have the length of the lists (" + str(len(lists[0])) + "), which is not the case of "
+                  + str(tuple(e)))
+    return lists
+
+
+@_constants_as_integers
+def AllDifferentList(term, *others, excepting=None):
+    """
+    Builds and returns a constraint AllDifferentList.
+    The lists must all be different, that is, two lists cannot be assigned the same sequence of values.
+
+    :param term: the (first) term, typically a list of lists of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param excepting: the tuple(s) that must be ignored (None, most of the time)
+    :return: a constraint AllDifferentList
+    :example:
+        # scheduling meetings: two meetings cannot be held on the same day in the same room
+        x = VarArray(size=[4, 2], dom=range(5))  # x[i] is the pair (day, room) of the ith meeting
+
+        satisfy(
+           AllDifferentList(x)
+        )
+
+        # a solution: [2, 0, 3, 4, 1, 3, 1, 0]
+    :example:
+        # with 'excepting', the tuples equal to the specified one are ignored
+        # here, the pair (0, 0) means that the meeting is not scheduled, and can then be repeated
+        x = VarArray(size=[4, 2], dom=range(5))  # x[i] is the pair (day, room) of the ith meeting
+
+        satisfy(
+           [Sum(x[i]) > 0 for i in (0, 1)],  # the two first meetings are scheduled
+
+           AllDifferentList(x, excepting=(0, 0))
+        )
+
+        # a solution: [0, 1, 0, 2, 0, 0, 0, 0]
+    """
+    lists = _check_lists_of_list_constraint("AllDifferentList", term, others, excepting)
+    excepting = _excepting_tuples(excepting, "AllDifferentList")
+    seen = set()  # identities of the variables of the lists (== being redefined for building expressions)
+    for t in lists:
+        key = tuple(id(x) for x in t)
+        error_if(key in seen, "A list cannot be given several times to AllDifferentList(), which is the case of " + str(t))
+        seen.add(key)
+    if len(lists) == 1:
+        warning("A constraint AllDifferentList discarded because defined with 1 list", "alldifferentlist_1_list")
+        return None  # a single list is always different from the other ones (as for AllDifferent() with a single variable)
+    if len(lists) > 0 and len(lists[0]) == 1:  # allDifferent-list requires lists of at least two variables: AllDifferent is posted on the variables
+        return AllDifferent([t[0] for t in lists], excepting=None if excepting is None else [e[0] for e in excepting])
+    return ECtr(ConstraintAllDifferentList(lists, excepting))
+
+
+@_constants_as_integers
+def AllEqual(term, *others, excepting=None):
+    """
+    Builds and returns a constraint AllEqual.
+    The terms (typically, variables) must all take the same value; the values given by 'excepting' are ignored.
+
+    :param term: the (first) term, typically a list of variables or expressions, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param excepting: the value(s) that must be ignored (None, most of the time)
+    :return: a constraint AllEqual
+    :example:
+        # balancing production lines: the lines must all produce the same quantity
+        x = VarArray(size=4, dom=range(100))  # x[i] is the quantity produced by the ith line
+
+        satisfy(
+           Sum(x) == 40,
+
+           AllEqual(x)
+        )
+
+        # a solution: [10, 10, 10, 10]
+    :example:
+        # with 'excepting', the specified value is ignored (here, 0 means that the line is stopped)
+        x = VarArray(size=4, dom=range(100))  # x[i] is the quantity produced by the ith line
+
+        satisfy(
+           Count(x, value=0) == 1,
+
+           AllEqual(x, excepting=0)
+        )
+
+        # a solution: [0, 1, 1, 1]
+    """
+    error_if(term is None, "AllEqual() requires variables (or expressions), which is not the case of None")
+    excepting = _excepting_values(excepting, "AllEqual")
+    terms = flatten(term, others)
+    if len(terms) == 0:
+        return ConstraintDummyConstant(1)
+    if len(terms) == 1 and isinstance(terms[0], (Variable, Node, PartialConstraint)):
+        warning("A constraint AllEqual discarded because defined with 1 term", "allequal_1_term")
+        return None  # a single term is always equal to itself (as for AllDifferent()); an integer is reported below by checkType()
+    V = sorted(term for term in terms if isinstance(term, int))
+    if len(V) > 0:
+        error_if(len(V) == len(terms),
+                 "AllEqual() requires at least one variable (or expression), and not only integers, which is not the case of " + str(terms))
+        error_if(len(set(V)) != 1, "AllEqual with two specified different integer constants")
+        return [term == V[0] for term in terms if not isinstance(term, int)]
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms, nodes_too=options.mini)
+    checkType(terms, ([Variable, Node]))  # variables and expressions may be mixed (as for AllDifferent())
+    return ECtr(ConstraintAllEqual(terms, excepting))
+
+
+@_constants_as_integers
+def AllEqualList(term, *others, excepting=None):
+    """
+    Builds and returns a constraint AllEqualList.
+    The lists must all be equal, that is, they must be assigned the same sequence of values.
+
+    When only two lists are given (and excepting is None), a group of intensional constraints of the form x[i] == y[i] is posted.
+
+    :param term: the (first) term, typically a list of lists of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param excepting: the tuple(s) that must be ignored (None, most of the time)
+    :return: a constraint AllEqualList
+    :example:
+        # the teams of the tournament must play the same pairs of roles in each round
+        x = VarArray(size=[3, 2], dom=range(4))  # x[i] is the pair of roles of the ith team
+
+        satisfy(
+           AllEqualList(x)
+        )
+    """
+    lists = _check_lists_of_list_constraint("AllEqualList", term, others, excepting)
+    excepting = _excepting_tuples(excepting, "AllEqualList")
+    if len(lists) == 1:
+        warning("A constraint AllEqualList discarded because defined with 1 list", "allequallist_1_list")
+        return None  # a single list is always equal to the other ones (as for AllEqual() with a single variable)
+    if len(lists) == 2 and excepting is None:
+        return [lists[0][i] == lists[1][i] for i in range(len(lists[0]))]
+    if len(lists) > 0 and len(lists[0]) == 1:  # allEqual-list requires lists of at least two variables: AllEqual is posted on the variables
+        return AllEqual([t[0] for t in lists], excepting=None if excepting is None else [e[0] for e in excepting])
+    return ECtr(ConstraintAllEqualList(lists, excepting))
+
+
+def _ordered(term, others, operator, lengths):
+    name = ("Increasing" if operator in (TypeOrderedOperator.INCREASING, TypeOrderedOperator.STRICTLY_INCREASING) else "Decreasing") + "()"
+    # the messages are only built in case of error
+    if term is None:
+        error(name + " requires variables (or expressions), which is not the case of None")
+    terms = flatten(term, others)
+    if len(terms) < 2:
+        return ConstraintDummyConstant(1)  # less than two terms are always ordered
+    # a term given several times is forbidden; variables are compared by identity (== being redefined for building expressions)
+    seen = set()
+    for t in terms:
+        key = id(t) if isinstance(t, Variable) else str(t)
+        if key in seen:
+            error(
+                ("A variable" if isinstance(t, Variable) else "An expression") + " cannot be given several times to " + name + ", which is the case of " + str(
+                    t))
+        seen.add(key)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms)  # (the expressions are kept)
+    checkType(terms, ([Variable], [Node], [Variable, Node]))
+    checkType(operator, TypeOrderedOperator)
+    if isinstance(lengths, range):
+        lengths = list(lengths)
+    if isinstance(lengths, int):
+        lengths = [lengths] * (len(terms) - 1)
+    checkType(lengths, ([int, Variable], type(None)))
+    if lengths is not None:
+        if any(isinstance(v, int) for v in lengths) and any(isinstance(v, Variable) for v in lengths):
+            error("The lengths of " + name + " must be either all integers or all variables, which is not the case of " + str(lengths))
+        if len(terms) == len(lengths):
+            lengths = lengths[:-1]  # we assume that the last value is useless
+        if len(terms) != len(lengths) + 1:
+            error(name + " requires as many lengths as terms minus 1 (possibly as many lengths as terms, the last one being ignored), which is not the case of "
+                  + str(lengths) + " for " + str(len(terms)) + " terms")
+    if options.mini or any(isinstance(t, Node) for t in terms):  # with expressions, intension constraints (ordered is on variables)
+        return [expr(operator, terms[i] if lengths is None else terms[i] + lengths[i], terms[i + 1]) for i in range(len(terms) - 1)]
+    return ECtr(ConstraintOrdered(terms, operator, lengths))
+
+
+@_constants_as_integers
+def Increasing(term, *others, strict=False, lengths=None):
+    """
+    Builds and returns a constraint Increasing.
+    The values assigned to the terms must be in increasing order (strictly, when 'strict' is True), possibly separated by the specified lengths.
+
+    :param term: the (first) term, typically a list of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param strict: if True, strict ordering must be considered
+    :param lengths: the lengths (durations) that must separate the values
+    :return: a constraint Increasing
+    :example:
+        # symmetry breaking: the (equivalent) machines are numbered in increasing order of load
+        x = VarArray(size=4, dom=range(20))  # x[i] is the load of the ith machine
+
+        satisfy(
+           Sum(x) == 30,
+
+           Increasing(x)
+        )
+
+        # a solution: [0, 0, 11, 19]
+    :example:
+        # a strictly increasing sequence of positions, with minimal distances given by 'lengths'
+        p = VarArray(size=4, dom=range(30))
+
+        satisfy(
+           Increasing(p, strict=True, lengths=[3, 2, 5])
+        )
+
+        # a solution: [0, 4, 7, 13]
+    """
+    return _ordered(term, others, TypeOrderedOperator.INCREASING if not strict else TypeOrderedOperator.STRICTLY_INCREASING, lengths)
+
+
+@_constants_as_integers
+def Decreasing(term, *others, strict=False, lengths=None):
+    """
+    Builds and returns a constraint Decreasing.
+    The values assigned to the terms must be in decreasing order (strictly, when 'strict' is True), possibly separated by the specified lengths.
+
+    :param term: the (first) term, typically a list of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param strict: if True, strict ordering must be considered
+    :param lengths: the lengths (durations) that must separate the values
+    :return: a constraint Decreasing
+    :example:
+        # symmetry breaking: the bins are used in decreasing order of their number of items
+        x = VarArray(size=5, dom=range(10))  # x[i] is the number of items put in the ith bin
+
+        satisfy(
+           Sum(x) == 12,
+
+           Decreasing(x)
+        )
+
+        # a solution: [9, 3, 0, 0, 0]
+    :example:
+        # with 'strict', two consecutive values cannot be equal any more
+        x = VarArray(size=4, dom=range(10))  # x[i] is the number of items put in the ith bin
+
+        satisfy(
+           Sum(x) == 14,
+
+           Decreasing(x, strict=True)
+        )
+
+        # a solution: [5, 4, 3, 2]
+    """
+    return _ordered(term, others, TypeOrderedOperator.DECREASING if not strict else TypeOrderedOperator.STRICTLY_DECREASING, lengths)
+
+
+def _lex(term, others, operator, matrix):
+    name = ("LexIncreasing" if operator in (TypeOrderedOperator.INCREASING, TypeOrderedOperator.STRICTLY_INCREASING) else "LexDecreasing") + "()"
+    # the messages are only built in case of error
+    if term is None or any(v is None for v in others):
+        error(name + " requires lists of variables, which is not the case of None")
+    for v in others:
+        if isinstance(v, range):
+            error(name + " does not accept a range as a list of values (a list or a tuple is expected), which is the case of " + str(v))
+    if len(others) == 0:  # a list of lists (for instance, a two-dimensional array, whose rows are considered)
+        term = list(term) if isinstance(term, types.GeneratorType) else term
+        if not isinstance(term, (list, tuple)) or any(not isinstance(v, (list, tuple, types.GeneratorType)) for v in term):
+            error(name + " requires several lists, or a list of lists (for instance, a two-dimensional array), which is not the case of " + str(term))
+        lists = [flatten(v) for v in term]
+    else:
+        lists = [flatten(v) for v in (term,) + others]  # a variable alone is a list of one variable
+    for i, lst in enumerate(lists):
+        if len(lists) == 2 and i == 1 and len(lst) > 0 and all(isinstance(v, int) and not isinstance(v, bool) for v in lst):  # a list of values
+            if matrix:
+                error("With matrix=True, " + name + " requires lists of variables, which is not the case of " + str(lst))
+        elif any(not isinstance(v, Variable) for v in lst):
+            error(name + " requires lists of variables (the second of two lists being possibly a list of values), which is not the case of " + str(lst))
+    if len(lists) < 2:  # less than two lists are always ordered (with matrix=True, the columns of a single row are ordered)
+        return _ordered(lists[0], (), operator, None) if matrix and len(lists) == 1 else ConstraintDummyConstant(1)
+    if any(len(lst) != len(lists[0]) for lst in lists):
+        error(name + " requires lists of the same length, which is not the case of " + str(lists))
+    if len(lists[0]) == 0:
+        error(name + " requires non-empty lists")
+    # a list given several times is forbidden; variables are compared by identity (== being redefined for building expressions)
+    seen = set()
+    for lst in lists:
+        key = tuple(id(v) if isinstance(v, Variable) else v for v in lst)
+        if key in seen:
+            error("A list cannot be given several times to " + name + ", which is the case of " + str(lst))
+        seen.add(key)
+    if len(lists[0]) == 1:  # lists of one element (lex requiring lists of at least two variables): the constraint ordered is posted
+        return expr(operator, lists[0][0], lists[1][0]) if isinstance(lists[1][0], int) else _ordered([lst[0] for lst in lists], (), operator, None)
+    checkType(operator, TypeOrderedOperator)
+    return ECtr(ConstraintLexMatrix(lists, operator)) if matrix else ECtr(ConstraintLex(lists, operator))
+
+
+@_constants_as_integers
+def LexIncreasing(term, *others, strict=False, matrix=False):
+    """
+    Builds and returns a constraint (increasing) Lexicographic.
+    The lists must be in lexicographically increasing order (as words in a dictionary), strictly when 'strict' is True.
+    With 'matrix', both the rows and the columns of the matrix must be ordered.
+
+    :param term: the (first) term, typically a list of lists of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param strict: if True, strict ordering must be considered
+    :param matrix: if True, the matrix version must be considered
+    :return: a constraint Lexicographic
+    :example:
+        # symmetry breaking on a matrix: the rows (here, the weeks of a roster) are lexicographically ordered
+        x = VarArray(size=[3, 4], dom=range(3))  # x[w][d] is the shift on day d of week w
+
+        satisfy(
+           [Sum(row) == 4 for row in x],
+
+           LexIncreasing(x)
+        )
+
+        # a solution: [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 2, 2]
+    :example:
+        # with 'matrix', both the rows and the columns are lexicographically ordered
+        x = VarArray(size=[3, 4], dom=range(3))  # x[w][d] is the shift on day d of week w
+
+        satisfy(
+           [Sum(row) == 4 for row in x],
+
+           LexIncreasing(x, matrix=True)
+        )
+
+        # a solution: [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 2, 2]
+    :example:
+        # with 'strict', two rows of the matrix cannot be identical
+        x = VarArray(size=[3, 4], dom=range(2))  # x[i][j] is 1 iff the ith machine performs the jth operation
+
+        satisfy(
+           LexIncreasing(x, strict=True)
+        )
+
+        # a solution: [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0]
+    """
+    return _lex(term, others, TypeOrderedOperator.INCREASING if not strict else TypeOrderedOperator.STRICTLY_INCREASING, matrix)
+
+
+@_constants_as_integers
+def LexDecreasing(term, *others, strict=False, matrix=False):
+    """
+    Builds and returns a constraint (decreasing) Lexicographic.
+    The lists must be in lexicographically decreasing order (as words in a dictionary), strictly when 'strict' is True.
+    With 'matrix', both the rows and the columns of the matrix must be ordered.
+
+    :param term: the (first) term, typically a list of lists of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :param strict: if True, strict ordering must be considered
+    :param matrix: if True, the matrix version must be considered
+    :return: a constraint Lexicographic
+    :example:
+        # symmetry breaking: the rows of the matrix are lexicographically ordered, from the greatest one
+        x = VarArray(size=[3, 4], dom=range(2))  # x[i][j] is 1 iff the ith machine performs the jth operation
+
+        satisfy(
+           [Sum(row) == 2 for row in x],
+
+           LexDecreasing(x)
+        )
+
+        # a solution: [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1]
+    :example:
+        # with 'matrix', both the rows and the columns are lexicographically ordered
+        x = VarArray(size=[3, 3], dom=range(2))
+
+        satisfy(
+           [Sum(row) == 1 for row in x],
+
+           LexDecreasing(x, matrix=True)
+        )
+
+        # a solution: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+    """
+    return _lex(term, others, TypeOrderedOperator.DECREASING if not strict else TypeOrderedOperator.STRICTLY_DECREASING, matrix)
+
+
+@_constants_as_integers
+def Disjoint(term, *others):
+    """
+    Builds and returns a constraint Disjoint.
+    Two different lists cannot share a value: a value assigned to a variable of a list cannot be assigned to a variable of another list.
+
+    :param term: the (first) term, typically a list of lists of variables, on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+
+    :return: a constraint Disjoint
+    :example:
+        # assigning distinct time slots to the two groups of a course
+        x = VarArray(size=[2, 3], dom=range(6))  # x[g] is the list of the slots used by the gth group
+
+        satisfy(
+           Disjoint(x)
+        )
+    """
+    if isinstance(term, types.GeneratorType):
+        term = [v for v in term]
+    elif len(others) > 0:
+        term = list((term,) + others)
+    lists = [flatten(v) for v in term]
+    assert all(checkType(t, [Variable]) and len(t) > 1 for t in lists)
+    return ECtr(ConstraintDisjoint(lists))
+
+
+@_constants_as_integers
+def Precedence(within, *, values=None, covered=False):
+    """
+    Builds and returns a constraint Precedence.
+    For two consecutive values v and w, a variable can be assigned w only if a previous variable is assigned v;
+    this is typically used for breaking symmetries between interchangeable values.
+
+    :param within: the scope of the constraint
+    :param values: the values such that the ith value must precede the i+1th value in the scope.
+    When None, the ordered union of the domains of the variables is considered
+    :param covered: if True, all specified values must be assigned to the variables of the scope
+    :return: a constraint Precedence
+    :example:
+        # symmetry breaking in graph colouring: the colours must be used in the order of their numbers
+        x = VarArray(size=6, dom=range(6))  # x[i] is the colour of the ith node
+        edges = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 0)]
+
+        satisfy(
+           [x[i] != x[j] for (i, j) in edges],
+
+           Precedence(x, values=range(6))
+        )
+
+        # a solution: [0, 1, 0, 1, 0, 1]
+    :example:
+        # with 'covered', each specified value must be used (here, the three shifts must all appear)
+        y = VarArray(size=7, dom=range(3))
+
+        satisfy(
+           Precedence(y, values=[0, 1, 2], covered=True)
+        )
+
+        # a solution: [0, 0, 0, 0, 0, 1, 2]
+    """
+    # the messages are only built in case of error
+    if within is None:
+        error("Precedence() requires variables (or expressions), which is not the case of None")
+    within = flatten(within)
+    for t in within:
+        if not isinstance(t, (Variable, Node, PartialConstraint, int)):  # a Boolean is reported when replaced (domain)
+            error("Precedence() requires variables (or expressions), which is not the case of " + str(t))
+    # the expressions and the integers are replaced by auxiliary variables
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(within, nodes_too=True, int_too=True)
+    # a variable given several times is only kept at its first occurrence (the next ones cannot be the first occurrence of a value)
+    seen = set()
+    within = [x for x in within if id(x) not in seen and not seen.add(id(x))]
+    if values is not None:
+        if isinstance(values, types.GeneratorType):
+            values = list(values)
+        if not isinstance(values, (range, tuple, list)) or any(not isinstance(v, int) or isinstance(v, bool) for v in values):
+            error("Precedence() requires a list, a tuple or a range of integers for values, which is not the case of " + str(values))
+        values = list(values)
+        if len(set(values)) != len(values):
+            error("Precedence() requires distinct values, which is not the case of " + str(values))
+    elif covered or len(within) == 1:
+        values = sorted({v for x in within for v in x.dom.all_values()})  # the ordered union of the domains (as in XCSP3)
+    if len(within) == 0:
+        warning("A constraint Precedence discarded because defined with 0 variables")
+        return None
+    if len(within) == 1:  # a single variable cannot take the values after the first one
+        x = within[0]
+        if covered:
+            return None if len(values) == 0 else x == values[0] if len(values) == 1 else _false_constraint()
+        if len(values) < 2:
+            return None
+        return x == values[0] if all(v in values for v in x.dom.all_values()) else not_belong(x, values[1:])
+    if values is None:
+        return ECtr(ConstraintPrecedence(within))
+    if len(values) < 2:
+        if covered and len(values) == 1:
+            return Count(within, value=values[0]) >= 1  # the single value must be assigned
+        warning("A constraint Precedence discarded because defined with " + str(len(values)) + " values", "precedence_" + str(len(values)) + "_value")
+        return None
+    return ECtr(ConstraintPrecedence(within, values=values, covered=covered))
+
+
+''' Method for handling complete/partial constraints '''
+
+
+def _wrapping_by_complete_or_partial_constraint(ctr):
+    condition = ctr.arguments[TypeCtrArg.CONDITION].content
+    return ECtr(ctr) if condition is not None else PartialConstraint(ctr)
+
+
+''' Counting and Summing Constraints '''
+
+
+def _sum_for_mini(pc, condition):
+    # with -mini, 'sum in S' (or 'not in S'), not accepted in the mini-tracks, is replaced by sum = aux, the domain of aux being the possible values
+    # of the sum (as for any auxiliary variable replacing a sum), and a unary table on aux whose supports (or conflicts) are the values of S that
+    # the sum can take; 0 (false) or 1 (true) is returned when there is no such value
+    lo, hi = pc.constraint.min_possible_value(), pc.constraint.max_possible_value()
+    if isinstance(condition, ConditionInterval):
+        values = list(range(max(condition.min, lo), min(condition.max, hi) + 1))
+    else:
+        values = sorted(v for v in condition.t if lo <= v <= hi)
+    if len(values) == 0:
+        return ConstraintDummyConstant(0 if condition.operator == TypeConditionOperator.IN else 1)
+    return _Extension(scope=[auxiliary().replace_partial_constraint(pc)], table=values, positive=condition.operator == TypeConditionOperator.IN)
+
+
+def _term_with_condition(term, condition):
+    # the condition applied to a single term (a variable or an expression), since XCSP3-core requires at least two terms in a sum
+    if isinstance(condition, (ConditionInterval, ConditionSet)):
+        values = range(condition.min, condition.max + 1) if isinstance(condition, ConditionInterval) else sorted(condition.t)
+        if isinstance(term, Variable):
+            return belong(term, values) if condition.operator == TypeConditionOperator.IN else not_belong(term, values)
+        return Node.build(condition.operator, term, Node.build(SET, list(values)))
+    return Node.build(condition.operator, term, condition.right_operand())
+
+
+@_constants_as_integers
+def Sum(term, *others, condition=None):
+    """
+    Builds and returns a component Sum (that becomes a constraint when subject to a condition).
+    The component represents the sum of the terms (possibly weighted), which is typically compared with a value, as in Sum(x) <= 10.
+
+    :param term: the first term on which the sum applies
+    :param others: the other terms (if any) on which the sum applies
+    :param condition: a condition directly specified for the sum (typically, None)
+    :return: a component/constraint Sum
+    :example:
+        # knapsack: the total weight of the selected items must not exceed the capacity of the bag
+        weights = [4, 3, 5, 2, 6, 3]
+        x = VarArray(size=6, dom={0, 1})  # x[i] is 1 iff the ith item is selected
+
+        satisfy(
+           Sum(x) == 3,
+
+           Sum(x * weights) <= 10
+        )
+
+        # a solution: [0, 0, 1, 1, 0, 1]
+    :example:
+        # the sum of some expressions, subject to a condition involving a variable
+        y = VarArray(size=6, dom=range(10))
+        z = Var(dom=range(100))
+
+        satisfy(
+           z == 42,
+
+           Sum(y[i] * (i + 1) for i in range(6)) == z
+        )
+
+        # a solution: [0, 0, 0, 0, 0, 7]
+    """
+
+    def _get_terms_coeffs(terms):
+        if len(terms) == 1 and isinstance(terms[0], ScalarProduct):
+            return flatten(terms[0].variables), flatten(terms[0].coeffs)
+        if all(isinstance(x, (Variable, PartialConstraint)) for x in terms):
+            return terms, None
+        t1, t2 = [], []
+        for tree in terms:
+            if isinstance(tree, Variable):
+                t1.append(tree)
+                t2.append(-1 if tree.inverse else 1)
+            else:
+                assert isinstance(tree, Node)
+                if tree.type == TypeNode.NEG and tree[0].type == TypeNode.VAR:
+                    pair = (tree[0].cnt, -1)
+                else:
+                    pair = tree.tree_val_if_binary_type(TypeNode.MUL)
+                if pair is None:
+                    # if tree.type in (TypeNode.ADD, TypeNode.SUB):
+                    pair = (tree, 1)  # TODO should we do that (for  all cases) ?
+                if pair is None:
+                    break
+                t1.append(pair[0])
+                t2.append(pair[1])
+        if len(t1) == len(terms):
+            for tree in terms:
+                if isinstance(tree, Node):
+                    tree.mark_as_used()
+            return t1, t2
+        return terms, None
+
+    def _manage_coeffs(terms, coeffs):
+        if coeffs:
+            OpOverrider.disable()
+            if len(coeffs) == 1 and isinstance(coeffs[0], (tuple, set, range)):
+                coeffs = list(coeffs[0])
+            elif isinstance(coeffs, (tuple, set, range)):  # TODO is set appropriate?
+                coeffs = list(coeffs)
+            elif isinstance(coeffs, (int, Variable)):
+                coeffs = [coeffs]
+            assert len(terms) == len(coeffs), "Lists (vars and coeffs) should have the same length. Here, we have " + str(len(terms)) + "!=" + str(len(coeffs))
+            # if 0 in coeffs:
+            #    terms = [term for i, term in enumerate(terms) if coeffs[i] != 0]
+            #    coeffs = [coeff for coeff in coeffs if coeff != 0]
+            # if all(c == 1 for c in coeffs): coeffs = None
+            checkType(coeffs, ([Node, Variable, int], type(None)))
+            OpOverrider.enable()
+        return terms, coeffs
+
+    terms = flatten(term, others, call_cp_array=False)
+    if any(isinstance(t, ScalarProduct) for t in terms) or any(isinstance(t, PartialConstraint) and isinstance(t.constraint, ConstraintSum) for t in terms):
+        terms = flatten(
+            [t.to_terms() if isinstance(t, ScalarProduct) else t.constraint.to_terms() if isinstance(t, PartialConstraint) and isinstance(t.constraint,
+                                                                                                                                          ConstraintSum) else t
+             for t in terms])
+    for i, v in enumerate(terms):
+        if type(v) is bool:
+            error("Sum() does not accept Booleans as terms, which is the case of " + str(v))
+        if type(v) is Node and v.type is TypeNode.INT:  # a constant expression (as x >= x, simplified into 1 by Node.build())
+            terms[i] = v.cnt
+    if any(v is None or (isinstance(v, int) and v == 0) or isinstance(v, ConstraintDummyConstant) for v in terms):
+        terms = [v.val if isinstance(v, ConstraintDummyConstant) else v for v in terms if
+                 v is not None and not (isinstance(v, int) and v == 0) and not (isinstance(v, ConstraintDummyConstant) and v.val == 0)]
+    if len(terms) == 0:
+        return ConstraintDummyConstant(0)  # 0, None
+    terms = auxiliary().replace_ints(terms) if any(v for v in terms if isinstance(v, int)) else terms
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms, nodes_too=options.mini and any(
+        not isinstance(term, Variable) and not neg_var.matches(term) for term in terms))
+    checkType(terms, ([Variable], [Node], [Variable, Node], [ScalarProduct]))  # , [PartialConstraint], [ECtr]))
+    for v in terms:
+        if isinstance(v, Variable) and v.dom.type != TypeVar.INTEGER:
+            error("Sum() requires integer variables (or expressions), which is not the case of " + str(v))
+    terms, coeffs = _get_terms_coeffs(terms)
+    if options.group_sum_coeffs and all(isinstance(v, Variable) for v in terms) and coeffs is None:
+        # maybe some variables occurs several times
+        d = dict()
+        for t in terms:
+            d[t] = d.get(t, 0) + 1
+        if any(v > 1 for v in d.values()):
+            terms, coeffs = [list(v) for v in zip(*d.items())]
+
+    terms, coeffs = _manage_coeffs(terms, coeffs)
+    condition = Condition.build_condition(condition)
+    if isinstance(condition, ConditionSet) and len(condition.t) == 0 or isinstance(condition, ConditionInterval) and condition.min > condition.max:
+        # the sum never belongs to an empty set: false with 'in', and always true with 'not in'
+        return ConstraintDummyConstant(0 if condition.operator == TypeConditionOperator.IN else 1)
+    if len(terms) == 1:  # no constraint sum (XCSP3-core requires at least two terms), except for a coefficient with 'in' or 'not in' (#208)
+        term = terms[0] if coeffs is None or coeffs[0] == 1 else terms[0] * coeffs[0]
+        if condition is None:
+            return term
+        if not condition.operator.is_set() or not isinstance(term, Node) or term.var_val_if_binary_type(TypeNode.MUL) is None or options.mini:
+            return _term_with_condition(term, condition)
+    if options.mini and condition is not None and condition.operator.is_set():
+        return _sum_for_mini(PartialConstraint(ConstraintSum(terms, coeffs, None)), condition)
+    return _wrapping_by_complete_or_partial_constraint(ConstraintSum(terms, coeffs, condition))
+
+
+@_constants_as_integers
+def Product(term, *others):
+    """
+    Builds and returns a node 'mul', root of a tree expression where specified arguments are children.
+    The node represents the product of the terms, as in Product(x) >= 60.
+
+    :param term: the first term on which the product applies
+    :param others: the other terms (if any) on which the product applies
+    :return: a node, root of a tree expression
+    :example:
+        # the volume of the box (the product of its three dimensions) must be large enough
+        x = VarArray(size=3, dom=range(1, 10))  # x[i] is the ith dimension of the box
+
+        satisfy(
+           Product(x) >= 60
+        )
+
+        # a solution: [1, 7, 9]
+    """
+
+    terms = flatten(term, others)
+    assert len(terms) > 0
+    for i, t in enumerate(terms):
+        if isinstance(t, PartialConstraint):
+            terms[i] = auxiliary().replace_partial_constraint(t)
+    checkType(terms, ([Variable], [Node]))
+    return Node.build(TypeNode.MUL, *terms)
+
+
+def _is_01(t):
+    # returns True if the term is 0/1: a variable whose domain is included in {0, 1}, a Boolean expression, a constraint, or a component with values 0 and 1
+    if isinstance(t, Variable):
+        return t.dom.type == TypeVar.INTEGER and 0 <= t.dom.smallest_value() and t.dom.greatest_value() <= 1
+    if isinstance(t, Node):
+        return t.type.is_predicate_operator() or all(0 <= v <= 1 for v in t.possible_values())
+    if isinstance(t, PartialConstraint):
+        return 0 <= t.constraint.min_possible_value() and t.constraint.max_possible_value() <= 1
+    return isinstance(t, (ECtr, bool))  # a constraint, or True/False for a constraint given by 'in'
+
+
+def _check_count_terms(name, terms, value):
+    # the terms of a count (Count() or one of its shortcuts, whose name is given): neither Booleans, nor integers, nor symbolic variables; and
+    # without value, only 0/1 terms (the terms evaluating to 1 being counted)
+    for t in terms:
+        if type(t) is bool and len(queue_in) == 0:  # (True and False represent constraints given by 'in' when queue_in is not empty)
+            error(name + "() does not accept Booleans as terms, which is the case of " + str(t))
+        if type(t) is int or isinstance(t, ConstraintDummyConstant):
+            error(name + "() does not accept integers among the terms, which is the case of " + str(t.val if isinstance(t, ConstraintDummyConstant) else t))
+        if isinstance(t, Variable) and t.dom.type != TypeVar.INTEGER:
+            error(name + "() requires integer variables, which is not the case of " + str(t))
+    if value is None:
+        for t in terms:
+            if not _is_01(t):
+                error(name + "() without value requires 0/1 terms (variables with domain {0,1} or Boolean expressions), which is not the case of " + str(t))
+
+
+def _count_values(name, value, values):
+    # the values to be counted (by default, the value 1): an ordered list of integers, or a list of distinct variables
+    if value is not None and values is not None:
+        error(name + "() accepts either the parameter value or the parameter values, not both")
+    if values is not None:
+        if isinstance(values, types.GeneratorType):
+            values = list(values)
+        if not isinstance(values, (list, tuple, set, frozenset, range)):
+            error(name + "() requires a list, a tuple, a set or a range of values, which is not the case of " + str(values))
+        values = list(values)
+        if len(values) == 0:
+            error(name + "() requires at least one value (the parameter values is empty)")
+        if any(type(v) is bool for v in values):
+            error(name + "() does not accept Booleans as values, which is the case of " + str(values))
+        if not (all(type(v) is int for v in values) or all(isinstance(v, Variable) for v in values)):
+            error(name + "() requires the values to be all integers or all variables, which is not the case of " + str(values))
+    elif value is None:
+        values = [1]
+    else:
+        if type(value) is bool:
+            error(name + "() does not accept Booleans as values, which is the case of " + str(value))
+        if not isinstance(value, (int, Variable, Node, PartialConstraint)):
+            error(name + "() requires an integer, a variable or an expression as value, which is not the case of " + str(value))
+        if isinstance(value, PartialConstraint):
+            value = auxiliary().replace_partial_constraint(value)
+        elif isinstance(value, Node):
+            value = auxiliary().replace_node(value)
+        values = [value]
+    if isinstance(values[0], int):
+        return sorted(set(values))
+    seen = set()
+    return [v for v in values if id(v) not in seen and not seen.add(id(v))]  # in the given order (variables are not compared with <)
+
+
+def _count_bounds(terms, values):
+    # the smallest and greatest possible values of the count of the specified values among the specified terms (variables and expressions)
+    if not isinstance(values[0], int):
+        return 0, len(terms)
+    lo = hi = 0
+    if len(values) == 1:  # the most frequent case
+        v = values[0]
+        for t in terms:
+            if not isinstance(t, Variable):
+                hi += 1  # the possible values of an expression are not computed
+                continue
+            dom = t.dom.all_values()
+            if dom.start <= v < dom.stop and (v - dom.start) % dom.step == 0 if isinstance(dom, range) else dom.count(v) > 0:
+                hi += 1
+                if len(dom) == 1:
+                    lo += 1
+        return lo, hi
+    s = frozenset(values)  # (the operator 'in' is not intercepted for a frozenset)
+    for t in terms:
+        if not isinstance(t, Variable):
+            hi += 1  # the possible values of an expression are not computed
+            continue
+        dom = t.dom.all_values()
+        if isinstance(dom, range):  # (a range, whose operator 'in' is intercepted)
+            if any(dom.start <= v < dom.stop and (v - dom.start) % dom.step == 0 for v in values):
+                hi += 1
+                if len(dom) <= len(values) and all(v in s for v in dom):
+                    lo += 1
+        elif any(v in s for v in dom):
+            hi += 1
+            if len(dom) <= len(values) and all(v in s for v in dom):
+                lo += 1
+    return lo, hi
+
+
+def _counted(term, values):
+    # the 0/1 expression that holds iff the term takes one of the values (integers or variables)
+    if values == [1] and isinstance(term, Variable) and term.dom.is_binary():
+        return term
+    if len(values) == 1:
+        return Node.build(TypeNode.EQ, term, values[0])
+    if isinstance(values[0], int):
+        return Node.build(TypeNode.IN, term, Node.build(TypeNode.SET, values))
+    return disjunction(Node.build(TypeNode.EQ, term, y) for y in values)
+
+
+def _constant_with_condition(k, condition):
+    # the constant k (as the count of no term) subject to the specified condition (if any): a constant, or an expression if the operand is a variable
+    if condition is None:
+        return ConstraintDummyConstant(k)
+    if isinstance(condition, (ConditionInterval, ConditionSet)) or isinstance(condition.right_operand(), int):
+        return ConstraintDummyConstant(1 if any(True for _ in condition.filtering([k])) else 0)
+    return Node.build(condition.operator, k, condition.right_operand())
+
+
+def _count(name, terms, value, values, condition):
+    # a count of the specified values (by default, the value 1) among the terms, for Count() and its shortcuts (whose name is given for the messages)
+    _check_count_terms(name, terms, value if values is None else values)
+    values = _count_values(name, value, values)
+    condition = Condition.build_condition(condition)
+    if len(terms) == 0:  # the count of no term is 0
+        return _constant_with_condition(0, condition)
+    terms = manage_global_indirection(terms, also_pc=True)
+    assert terms is not None
+    if any(type(t) is Node and t.type is TypeNode.INT for t in terms):  # constant expressions (as x >= x, simplified into 1 by Node.build())
+        s = frozenset(values) if isinstance(values[0], int) else None
+        # a constant that is not counted is discarded, and a constant that is counted is replaced by an auxiliary variable
+        terms = [auxiliary().replace_int(t.cnt) if type(t) is Node and t.type is TypeNode.INT else t for t in terms
+                 if not (type(t) is Node and t.type is TypeNode.INT and s is not None and t.cnt not in s)]
+        if len(terms) == 0:
+            return _constant_with_condition(0, condition)
+    checkType(terms, ([Variable], [Node], [Variable, Node]))
+    if options.mini and values == [1] and all(isinstance(t, Variable) and t.dom.is_binary() for t in terms):
+        return Sum(terms, condition=condition)  # the count of 0/1 variables equal to 1 is their sum (count is not in the mini-tracks)
+    lo, hi = _count_bounds(terms, values)
+    if hi == 0:  # no term can take one of the values: the count is 0
+        return _constant_with_condition(0, condition)
+    keys = [id(t) if isinstance(t, Variable) else str(t) for t in terms]
+    if len(set(keys)) < len(keys):  # a variable (or an expression, as not(b)) is repeated: a sum is posted, each term weighted by its number of occurrences
+        distinct, counts = Node._distinct_sons(Node._create_sons(*terms))
+        terms = [son.cnt if son.type == TypeNode.VAR else son for son in distinct]
+        if len(terms) == 1:
+            term = _counted(terms[0], values) * counts[0]
+            return term if condition is None else _term_with_condition(term, condition)
+        return _wrapping_by_complete_or_partial_constraint(ConstraintSum([_counted(t, values) for t in terms], counts, condition))
+    if len(terms) == 1:  # no constraint count (XCSP3-core requires at least two terms)
+        term = _counted(terms[0], values)
+        return term if condition is None else _term_with_condition(term, condition)
+    ctr = ConstraintCount(terms, values, condition, bounds=(lo, hi))
+    return _wrapping_by_complete_or_partial_constraint(ctr) if condition is None else PartialConstraint.complete(ctr)
+
+
+def _exist(name, terms, value, reified_by):
+    # at least one term takes the value (or evaluates to 1 if value is None), for Exist() and AtLeastOne(), AnyHold() (whose name is given for the messages)
+    negated = isinstance(reified_by, Node) and reified_by.type == TypeNode.NOT and reified_by.cnt[0].type == TypeNode.VAR  # ~r
+    if reified_by is not None and not negated and not (isinstance(reified_by, Variable) and reified_by.dom.is_binary()):
+        error("The parameter reified_by of " + name + "() must be a 0/1 variable (possibly negated with ~), which is not the case of " + str(reified_by))
+    _check_count_terms(name, terms, value)
+    if len(terms) == 0:  # no term: false (and so, the reification variable is 0)
+        return ConstraintDummyConstant(0) if reified_by is None else reified_by == 0
+    if reified_by is not None:
+        if negated:  # ~r: an auxiliary variable equal to not(r)
+            aux = auxiliary().new_var(0, 1)
+            satisfy(aux != reified_by.cnt[0].cnt)
+            reified_by = aux
+        if len(terms) == 1:
+            return (terms[0] == reified_by) if value is None or isinstance(value, int) and value == 1 else ((terms[0] == value) == reified_by)
+        return ECtr(ConstraintElement(terms, index=None, value=value if value is not None else 1, reified_by=reified_by))
+    if value is None and len(terms) <= 2:  # the terms are 0/1
+        return terms[0] if len(terms) == 1 else disjunction(terms)
+    if options.exist_by_element:
+        aux = auxiliary().new_var(0, 1)
+        satisfy(ECtr(ConstraintElement(terms, index=None, value=value if value is not None else 1, reified_by=aux)))
+        return aux
+    return _count(name, terms, value, None, None) >= 1
+
+
+
+@_constants_as_integers
+def Count(within, *within_complement, value=None, values=None, condition=None):
+    """
+    Builds and returns a component Count (that becomes a constraint when subject to a condition).
+    The component represents the number of terms taking the specified value (or one of the specified values), as in Count(x, value=0) >= 2.
+
+    Either the named parameter value or the named parameter values must be used.
+
+    :param within: the (first) term, typically a list of variables or expressions, on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be counted
+    :param values: the values to be counted
+    :param condition: a condition directly specified for the count (typically, None)
+    :return: a component/constraint Count
+    :example:
+        # rostering: over a week, a nurse must have at least two days off (the shift 0 meaning a day off)
+        x = VarArray(size=7, dom=range(3))  # x[d] is the shift of the nurse on day d
+
+        satisfy(
+           Count(x, value=0) >= 2,
+
+           Count(x, value=2) == 1  # exactly one night shift
+        )
+
+        # a solution: [0, 0, 0, 0, 0, 0, 2]
+    :example:
+        # counting the occurrences of several values, here the two working shifts over two weeks
+        y = VarArray(size=14, dom=range(3))
+
+        satisfy(
+           Count(y, values=[1, 2]) == 10
+        )
+
+        # a solution: [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    """
+    return _count("Count", flatten(within, within_complement), value, values, condition)
+
+
+@_constants_as_integers
+def Exist(within, *within_complement, value=None, reified_by=None):
+    """
+    Builds and returns a constraint Count that checks if at least one term takes the specified value.
+    When value is None, it checks if at least one term evaluates to 1 (seen as True).
+
+    :param within: the (first) term, typically a list of variables or expressions, on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be found if not None (None, by default)
+    :param reified_by: if present (not None) a 01 variable corresponding to the reification of the constraint
+    :return: a constraint Count
+    :example:
+        # graph domination: each node must be covered by at least one selected node
+        b = VarArray(size=6, dom={0, 1})  # b[i] is 1 iff the ith node is selected
+        neighbours = [[0, 1, 2], [0, 1, 3], [0, 2, 4], [1, 3, 5], [2, 4, 5], [3, 4, 5]]
+
+        satisfy(
+           Sum(b) == 2,
+
+           [Exist(b[j] for j in neighbours[i]) for i in range(6)]
+        )
+
+        # a solution: [0, 0, 1, 1, 0, 0]
+    :example:
+        # with 'reified_by', a 0/1 variable is made equivalent to the constraint
+        b = VarArray(size=5, dom={0, 1})  # b[i] is 1 iff the ith station is built
+        r = Var(dom={0, 1})  # r is 1 iff at least one of the two first stations is built
+
+        satisfy(
+           Sum(b) == 1,
+
+           Exist(b[0], b[1], reified_by=r)
+        )
+
+        # a solution: [0, 0, 0, 0, 1] 0
+    """
+    return _exist("Exist", flatten(within, within_complement), value, reified_by)
+
+
+@_constants_as_integers
+def AnyHold(within, *within_complement):
+    """
+    Builds and returns a constraint Count that checks if at least one term evaluates to 1 (seen as True).
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :return: a constraint Count
+    :example:
+        # at least one of the meetings must be held on Monday (the day 0)
+        x = VarArray(size=4, dom=range(7))  # x[i] is the day of the ith meeting
+
+        satisfy(
+           AllDifferent(x),
+
+           AnyHold(x[i] == 0 for i in range(4))
+        )
+
+        # a solution: [0, 1, 2, 3]
+    """
+    return _exist("AnyHold", flatten(within, within_complement), None, None)
+
+
+@_constants_as_integers
+def NotExist(within, *within_complement, value=None):
+    """
+    Builds and returns a constraint Count that checks that no term takes the specified value.
+    When value is None, it checks that no term evaluates to 1 (seen as True).
+
+    :param within: the (first) term, typically a list of variables or expressions, on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be tested if not None (None, by default)
+    :return: a constraint Count
+    :example:
+        # no employee can be assigned the night shift (here, the shift 2) during the week-end
+        x = VarArray(size=7, dom=range(3))  # x[d] is the shift of the employee on day d
+
+        satisfy(
+           Count(x, value=2) == 2,
+
+           NotExist([x[5] == 2, x[6] == 2])
+        )
+
+        # a solution: [0, 0, 0, 2, 2, 0, 0]
+    """
+    return _count("NotExist", flatten(within, within_complement), value, None, None) == 0
+
+
+@_constants_as_integers
+def NoneHold(within, *within_complement):
+    """
+    Builds and returns a constraint Count that checks that no term evaluates to 1 (seen as True).
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :return: a constraint Count
+    :example:
+        # the forbidden pattern (two consecutive working days) must not appear in the sequence
+        x = VarArray(size=5, dom=range(3))  # x[d] is the shift on day d (0 meaning a day off)
+
+        satisfy(
+           Count(x, value=1) == 2,
+
+           NoneHold(both(x[i] == 1, x[i + 1] == 1) for i in range(4))
+        )
+
+        # a solution: [0, 0, 1, 0, 1]
+    """
+    return _count("NoneHold", flatten(within, within_complement), None, None, None) == 0
+
+
+@_constants_as_integers
+def ExactlyOne(within, *within_complement, value=None):
+    """
+    Builds and returns a constraint Count that checks that exactly one term evaluates to 1 (seen as True).
+    When the parameter value is specified (and not None), it checks instead that exactly one term takes this value.
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be found if not None (None, by default)
+    :return: a constraint Count
+    :example:
+        # assignment: each task must be performed by exactly one machine
+        b = VarArray(size=[4, 3], dom={0, 1})  # b[i][j] is 1 iff the ith task is performed by the jth machine
+
+        satisfy(
+           [ExactlyOne(b[i]) for i in range(4)]
+        )
+
+        # a solution: [0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1]
+    """
+    return _count("ExactlyOne", flatten(within, within_complement), value, None, None) == 1
+
+
+@_constants_as_integers
+def AtLeastOne(within, *within_complement, value=None):
+    """
+    Builds and returns a constraint Count that checks that at least one term evaluates to 1 (seen as True).
+    When the parameter value is specified (and not None), it checks instead that at least one term takes this value.
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be found if not None (None, by default)
+    :return: a constraint Count
+    :example:
+        # covering: each area must be covered by at least one of the built stations
+        b = VarArray(size=5, dom={0, 1})  # b[i] is 1 iff the ith station is built
+        covers = [[0, 2], [1, 3], [0, 4], [2, 3, 4]]
+
+        satisfy(
+           [AtLeastOne(b[i] for i in c) for c in covers]
+        )
+
+        # a solution: [0, 0, 1, 1, 1]
+    """
+    return _exist("AtLeastOne", flatten(within, within_complement), value, None)
+
+
+@_constants_as_integers
+def AtMostOne(within, *within_complement, value=None):
+    """
+    Builds and returns a constraint Count that checks that at most one term evaluates to 1 (seen as True).
+    When the parameter value is specified (and not None), it checks instead that at most one term takes this value.
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :param value: the value to be found if not None (None, by default)
+    :return: a constraint Count
+    :example:
+        # packing: at most one of the incompatible items can be selected
+        b = VarArray(size=5, dom={0, 1})  # b[i] is 1 iff the ith item is selected
+        incompatible = [(0, 1, 2), (2, 3), (3, 4)]
+
+        satisfy(
+           Sum(b) == 2,
+
+           [AtMostOne(b[i] for i in g) for g in incompatible]
+        )
+
+        # a solution: [0, 0, 1, 0, 1]
+    """
+    return _count("AtMostOne", flatten(within, within_complement), value, None, None) <= 1
+
+
+@_constants_as_integers
+def AllHold(within, *within_complement):
+    """
+    Builds and returns a constraint Count that checks that all terms evaluate to 1 (seen as True).
+
+    :param within: the first term on which the count applies
+    :param within_complement: the other terms (if any) on which the count applies
+    :return: a constraint Count
+    :example:
+        # precedences: all the tasks must be scheduled after the task they depend on
+        s = VarArray(size=4, dom=range(20))  # s[i] is the starting time of the ith task
+        precedences = [(0, 1), (0, 2), (1, 3), (2, 3)]
+
+        satisfy(
+           AllHold(s[i] + 3 <= s[j] for (i, j) in precedences)
+        )
+
+        # a solution: [0, 3, 3, 6]
+    """
+    terms = flatten(within, within_complement)
+    return _count("AllHold", terms, None, None, None) == len(terms)
+
+
+@_constants_as_integers
+def Hamming(term, *others):
+    """
+    Builds and returns a constraint Sum, corresponding to the Hamming distance of the two specified lists.
+    The Hamming distance is the number of indexes at which the two lists have different values, as in Hamming(x, previous) <= 2.
+
+    :param term: the first term on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :return: a constraint Sum
+    :example:
+        # rescheduling: the new schedule must not differ too much from the previous one
+        previous = [0, 2, 1, 2, 0]
+        x = VarArray(size=5, dom=range(3))  # x[i] is the shift of the ith employee
+
+        satisfy(
+           Hamming(x, previous) <= 2
+        )
+
+        # a solution: [0, 0, 0, 2, 0]
+    """
+    if isinstance(term, types.GeneratorType):
+        term = [v for v in term]
+    elif len(others) > 0:
+        term = list((term,) + others)
+    lists = [flatten(v) for v in term]
+    assert all(checkType(t, ([Variable], [int])) for t in lists) and len(lists) == 2 and len(lists[0]) == len(lists[1])
+    return Sum(lists[0][j] != lists[1][j] for j in range(len(lists[0])))
+
+
+@_constants_as_integers
+def NValues(within, *within_complement, excepting=None, condition=None):
+    """
+    Builds and returns a component NValues (that becomes a constraint when subject to a condition).
+    The component represents the number of distinct values taken by the terms (ignoring those given by 'excepting'), as in NValues(x) <= 3.
+
+    :param within: the (first) term, typically a list of variables, on which the NValues applies
+    :param within_complement: the other terms (if any) on which the NValues applies
+    :param excepting: the value(s) that must be ignored (None, most of the time)
+    :param condition: a condition directly specified for the count (typically, None)
+    :return: a component/constraint NValues
+    :example:
+        # graph colouring: minimizing the number of colours used for colouring the nodes
+        x = VarArray(size=6, dom=range(6))  # x[i] is the colour of the ith node
+        edges = [(0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 5)]
+
+        satisfy(
+           [x[i] != x[j] for (i, j) in edges]
+        )
+
+        minimize(
+           NValues(x)
+        )
+
+        # an optimal solution: [0, 1, 1, 0, 0, 1] 2
+    :example:
+        # with 'excepting', the value 0 (here, meaning 'no team') is not counted
+        y = VarArray(size=8, dom=range(4))  # y[i] is the team of the ith player
+
+        satisfy(
+           Count(y, value=0) == 2,  # two players have no team
+
+           NValues(y, excepting=0) == 2
+        )
+
+        # a solution: [0, 0, 1, 1, 1, 1, 1, 2]
+    """
+    error_if(within is None, "NValues() requires variables (or expressions), which is not the case of None")
+    terms = flatten(within, within_complement)
+    if len(terms) > 0 and all(isinstance(t, int) for t in terms):
+        error("NValues() requires at least one variable (or expression), and not only integers, which is not the case of " + str(terms))
+    return _nvalues(terms, excepting, condition)
+
+
+def _nvalues(terms, excepting=None, condition=None):  # terms is a flat list
+    excepting = _excepting_values(excepting, "NValues")
+    if len(terms) == 0:  # the number of distinct values of no term is 0
+        return _constant_with_condition(0, Condition.build_condition(condition))
+    if len(terms) == 1 and excepting is None and isinstance(terms[0], (Variable, Node, PartialConstraint, int)) and not isinstance(terms[0], bool):
+        return _constant_with_condition(1, Condition.build_condition(condition))  # a single term (an invalid term is reported below, as for AllEqual())
+    integers = {}  # an integer given several times is replaced by a single auxiliary variable
+    for i, t in enumerate(terms):
+        if isinstance(t, PartialConstraint):
+            terms[i] = auxiliary().replace_partial_constraint(t)
+        elif isinstance(t, int):
+            key = (t, type(t))  # True and 1 are not mixed up (a Boolean is reported by replace_int())
+            if key not in integers:
+                integers[key] = auxiliary().replace_int(t)
+            terms[i] = integers[key]
+    # if _is_mixed_list(terms):
+    #     terms = [auxiliary().replace_node(t) if isinstance(t, Node) else t for t in terms]
+    checkType(terms, ([Variable], [Node], [Variable, Node]))
+    # checkType(terms, ([Variable], [Node]))
+    # a term given several times does not change the number of distinct values: it is kept once (identical partial constraints being
+    # replaced by the same auxiliary variable); variables are compared by identity (== being redefined for building expressions)
+    kept = {}
+    for t in terms:
+        kept.setdefault(id(t) if isinstance(t, Variable) else str(t), t)
+    if len(kept) < len(terms):
+        terms = list(kept.values())
+    condition = Condition.build_condition(condition)
+    if len(terms) == 1:  # no constraint nValues (XCSP3-core requires at least two terms): one value, or none if the term takes an excepted value
+        if excepting is None:
+            return _constant_with_condition(1, condition)
+        t = terms[0]
+        term = Node.build(TypeNode.NE, t, excepting[0]) if len(excepting) == 1 else Node.build(TypeNode.NOTIN, t, Node.build(TypeNode.SET, excepting))
+        return term if condition is None else _term_with_condition(term, condition)
+    ctr = ConstraintNValues(terms, excepting, condition)
+    return _wrapping_by_complete_or_partial_constraint(ctr) if condition is None else PartialConstraint.complete(ctr)
+
+
+@_constants_as_integers
+def NotAllEqual(term, *others):
+    """
+    Builds and returns a component NValues (capturing NotAllEqual).
+    The terms cannot all take the same value: at least two of them must be different.
+
+    :param term: the first term on which the constraint applies
+    :param others: the other terms (if any) on which the constraint applies
+    :return: a constraint NValues (equivalent to NotAllEqual)
+    :example:
+        # hypergraph colouring: the nodes of each hyperedge cannot all have the same colour
+        x = VarArray(size=6, dom=range(3))  # x[i] is the colour of the ith node
+        hyperedges = [(0, 1, 2), (2, 3, 4), (1, 4, 5)]
+
+        satisfy(
+           [NotAllEqual(x[i] for i in e) for e in hyperedges]
+        )
+
+        # a solution: [0, 0, 1, 0, 0, 1]
+    """
+    error_if(term is None, "NotAllEqual() requires variables (or expressions), which is not the case of None")
+    terms = flatten(term, others)
+    error_if(len(terms) > 0 and all(isinstance(t, int) for t in terms),
+             "NotAllEqual() requires at least one variable (or expression), and not only integers, which is not the case of " + str(terms))
+    return _nvalues(terms) > 1
+
+
+@_constants_as_integers
+def Cardinality(within, *within_complement, occurrences, closed=False):
+    """
+    Builds and returns a constraint Cardinality.
+    For each value (key of occurrences), the number of terms assigned this value must be as specified: an integer, a range (or a collection)
+    of contiguous integers, a variable or an expression.
+
+    When occurrences is given under the form of a list or tuple t, a dictionary is computed as dict(enumerate(t)).
+    The values (keys of occurrences) can be integers, variables or expressions. A variable cannot be given several times in the list.
+
+    :param within: the (first) term, typically a list of variables, on which the constraint applies
+    :param within_complement: the other terms (if any) on which the constraint applies
+    :param occurrences: a dictionary indicating the restriction (integer, range of contiguous integers, or variable) of occurrences per value
+    :param closed: if True, variables must be assigned to values (keys of the dictionary)
+    :return: a Cardinality constraint
+    :example:
+        # assigning employees to shifts, while controlling the number of employees per shift
+        x = VarArray(size=12, dom=range(4))  # x[i] is the shift of the ith employee
+
+        satisfy(
+           Cardinality(x, occurrences={0: 3, 1: 3, 2: range(2, 5), 3: range(1, 4)})
+        )
+
+        # a solution: [0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3]
+    :example:
+        # with 'closed', to indicate that the employees can only be assigned the listed shifts
+        y = VarArray(size=6, dom=range(10))
+
+        satisfy(
+           Cardinality(y, occurrences={2: range(4), 3: range(4), 5: range(4)}, closed=True)
+        )
+
+        # a solution: [2, 2, 2, 3, 3, 3]
+    :example:
+        # the number of occurrences of a value can also be given by a variable
+        x = VarArray(size=8, dom=range(3))  # x[i] is the shift of the ith employee
+        z = Var(dom=range(2, 5))  # z is the number of employees assigned the shift 0
+
+        satisfy(
+           Cardinality(x, occurrences={0: z, 1: range(2, 5), 2: range(2, 5)})
+        )
+    """
+    error_if(within is None, "Cardinality() requires variables (or expressions), which is not the case of None")
+    if not isinstance(occurrences, (dict, list, tuple)):
+        error("The parameter occurrences of Cardinality() must be given a dictionary (or a list or a tuple t, seen as dict(enumerate(t))), "
+              "which is not the case of " + repr(occurrences))
+    checkType(closed, (bool, type(None)))
+    terms = flatten(within, within_complement)
+    for i, t in enumerate(terms):
+        if isinstance(t, PartialConstraint):
+            terms[i] = auxiliary().replace_partial_constraint(t)
+        elif isinstance(t, Node):
+            terms[i] = auxiliary().replace_node(t)  # (the auxiliary variable was put in a list, written [aux_gb[0]])
+    checkType(terms, [Variable])
+    if len({id(t) for t in terms}) < len(terms):
+        repeated = [t for i, t in enumerate(terms) if any(u is t for u in terms[:i])]
+        error("A variable is given several times in the list of Cardinality() (a component given several times, such as Sum(), being replaced by "
+              "the same auxiliary variable): " + ", ".join(dict.fromkeys(str(t) for t in repeated)))
+    if isinstance(occurrences, (tuple, list)):
+        occurrences = dict(enumerate(occurrences))
+    values = [_cardinality_value(v) for v in occurrences.keys()]
+    occurs = [_cardinality_occurrences(occ) for occ in occurrences.values()]
+    if len(terms) < 2:  # XCSP3 requires at least two terms
+        return _cardinality_on_few_terms(terms, values, occurs, closed)
+    # the numbers of occurrences known when compiling, from 0 to the number of terms (and 0 for a value that no term can take)
+    kept = []
+    for v, occ in zip(values, occurs):
+        lo, hi = (0, 0) if isinstance(v, int) and all(v not in t.dom for t in terms) else (0, len(terms))
+        if isinstance(occ, int):
+            if not lo <= occ <= hi:
+                return ConstraintDummyConstant(0)
+        elif isinstance(occ, range):
+            occ = range(max(occ.start, lo), min(occ.stop, hi + 1))
+            if len(occ) == 0:
+                return ConstraintDummyConstant(0)
+            occ = occ.start if len(occ) == 1 else occ
+        if not (hi == 0 and isinstance(occ, int)):  # a value that no term can take is discarded (when its number of occurrences can be 0)
+            kept.append((v, occ))
+    if len(kept) == 0:  # no value: nothing is required, except with closed
+        return ConstraintDummyConstant(0 if closed else 1)
+    values, occurs = [v for v, _ in kept], [occ for _, occ in kept]
+    decomposition = (terms, values, occurs, closed)  # (used when the constraint is in a logical expression, without the auxiliary variables below)
+    # XCSP3-core does not allow variables mixed with integers or intervals
+    if any(isinstance(occ, Variable) for occ in occurs) and not all(isinstance(occ, Variable) for occ in occurs):
+        occurs = [occ if isinstance(occ, Variable) else auxiliary().new_var(occ) if isinstance(occ, range) else auxiliary().replace_int(occ) for occ in occurs]
+    if any(isinstance(v, Variable) for v in values) and not all(isinstance(v, Variable) for v in values):
+        values = [v if isinstance(v, Variable) else auxiliary().replace_int(v) for v in values]
+    return ECtr(ConstraintCardinality(terms, values, occurs, closed, decomposition))
+
+
+def _cardinality_value(v):
+    # a value of Cardinality(): an integer or a variable (an expression being replaced by an auxiliary variable)
+    if isinstance(v, (Node, PartialConstraint)):
+        return auxiliary().replace_node(v) if isinstance(v, Node) else auxiliary().replace_partial_constraint(v)
+    if not isinstance(v, (int, Variable)) or isinstance(v, bool):
+        error("The values of Cardinality() (keys of occurrences) must be integers, variables or expressions, which is not the case of " + repr(v))
+    return v
+
+
+def _cardinality_occurrences(occ):
+    # a number of occurrences of Cardinality(): an integer, a variable (an expression being replaced by an auxiliary variable) or a range (an interval)
+    if isinstance(occ, (Node, PartialConstraint)):
+        return auxiliary().replace_node(occ) if isinstance(occ, Node) else auxiliary().replace_partial_constraint(occ)
+    if isinstance(occ, Variable) or (isinstance(occ, int) and not isinstance(occ, bool)):
+        return occ
+    t = list(occ) if isinstance(occ, (range, list, tuple, set, frozenset)) else None
+    t = sorted(set(t)) if t is not None and all(isinstance(v, int) and not isinstance(v, bool) for v in t) else None
+    if t is None or len(t) == 0 or t[-1] - t[0] + 1 != len(t):
+        error("A number of occurrences of Cardinality() must be given by an integer, a variable, an expression, or a non-empty range (or collection) "
+              "of contiguous integers, which is not the case of " + repr(occ))
+    return t[0] if len(t) == 1 else range(t[0], t[-1] + 1)
+
+
+def _cardinality_on_few_terms(terms, values, occurs, closed):
+    # Cardinality() on no term or a single term t: the number of occurrences of a value v is 0, or (t == v)
+    assert len(terms) < 2
+    parts = []
+    for v, occ in zip(values, occurs):
+        if len(terms) == 0:
+            if isinstance(occ, Variable):
+                parts.append(occ == 0)
+            elif 0 not in (occ if isinstance(occ, range) else [occ]):
+                return ConstraintDummyConstant(0)
+            continue
+        t = terms[0]
+        if isinstance(occ, Variable):
+            parts.append(Node.build(TypeNode.EQ, occ, Node.build(TypeNode.EQ, t, v)))
+            continue
+        possible = [k for k in (0, 1) if k in (occ if isinstance(occ, range) else [occ])]
+        if len(possible) == 0:
+            return ConstraintDummyConstant(0)
+        if len(possible) == 1:
+            parts.append(Node.build(TypeNode.EQ if possible[0] == 1 else TypeNode.NE, t, v))
+    if closed and len(terms) == 1:
+        if len(values) == 0:
+            return ConstraintDummyConstant(0)
+        parts.append(belong(terms[0], values) if all(isinstance(v, int) for v in values) else disjunction(terms[0] == v for v in values))
+    if len(terms) == 0 and len(parts) == 0:
+        warning("A constraint Cardinality discarded because defined with 0 term", "cardinality_0_term")
+    return conjunction(parts) if len(parts) > 0 else ConstraintDummyConstant(1)
+
+
+''' Connection Constraints '''
+
+
+def _extremum_terms(term, others):
+    terms = flatten(term, others)
+    terms = [Sum(t) if isinstance(t, ScalarProduct) else t for t in terms]  # to have PartialConstraints
+    # if len(terms) == 0:
+    #     return None
+    # if len(terms) == 1:
+    #     return terms[0]
+    checkType(terms, ([Variable, Node, int, ConstraintDummyConstant], [PartialConstraint]))
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms)
+    return terms
+
+
+def _extremum(name, term, others, condition):
+    # the component Maximum (or Minimum, whose name is given) of the terms, possibly subject to the specified condition
+    terms = flatten(term, others)
+    terms = [Sum(t) if isinstance(t, ScalarProduct) else t for t in terms]  # to have partial constraints
+    # a constant (as Sum([]), or x >= x simplified into 1 by Node.build()) is an integer
+    terms = [t.val if isinstance(t, ConstraintDummyConstant) else t.cnt if type(t) is Node and t.type is TypeNode.INT else t for t in terms]
+    if len(terms) == 0:
+        error(name + "() requires at least one term")
+    for t in terms:
+        if type(t) is bool:
+            error(name + "() does not accept Booleans as terms, which is the case of " + str(t))
+        if isinstance(t, Variable) and t.dom.type != TypeVar.INTEGER:
+            error(name + "() requires integer variables (or expressions), which is not the case of " + str(t))
+    checkType(terms, ([Variable, Node, int], [PartialConstraint]))
+    condition = Condition.build_condition(condition)
+    if isinstance(condition, ConditionSet) and len(condition.t) == 0 or isinstance(condition, ConditionInterval) and condition.min > condition.max:
+        # the extremum never belongs to an empty set: false with 'in', and always true with 'not in'
+        return ConstraintDummyConstant(0 if condition.operator == TypeConditionOperator.IN else 1)
+    best = maxPython if name == "Maximum" else minPython
+    integers = [t for t in terms if isinstance(t, int)]
+    if len(integers) == len(terms):  # the extremum of integers is known
+        return _constant_with_condition(best(integers), condition)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms)
+    # each term is kept once (identical partial constraints being replaced by the same auxiliary variable), and the integers are reduced to
+    # the largest one (the smallest one for Minimum()), at the place of the first one; variables are compared by identity (== being redefined)
+    kept = {}
+    for t in terms:
+        kept.setdefault(int if isinstance(t, int) else id(t) if isinstance(t, Variable) else str(t), best(integers) if isinstance(t, int) else t)
+    terms = list(kept.values())
+    if len(terms) == 1:  # no constraint (XCSP3-core requires at least two terms): the term, possibly subject to the condition
+        return terms[0] if condition is None else _term_with_condition(terms[0], condition)
+    return _wrapping_by_complete_or_partial_constraint((ConstraintMaximum if name == "Maximum" else ConstraintMinimum)(terms, condition))
+
+
+@_constants_as_integers
+def Maximum(term, *others, condition=None):
+    """
+    Builds and returns a component Maximum (that becomes a constraint when subject to a condition).
+    The component represents the largest value taken by the terms, which is typically compared with a value or a variable, as in Maximum(x) <= 10.
+
+    :param term: the first term on which the maximum applies
+    :param others: the other terms (if any) on which the maximum applies
+    :param condition: a condition directly specified for the maximum (typically, None)
+    :return: a component/constraint Maximum
+    :example:
+        # scheduling: the makespan is the completion time of the last task
+        durations = [3, 5, 2, 4]
+        s = VarArray(size=4, dom=range(20))  # s[i] is the starting time of the ith task
+
+        satisfy(
+           NoOverlap(origins=s, lengths=durations)
+        )
+
+        minimize(
+           Maximum(s[i] + durations[i] for i in range(4))
+        )
+
+        # an optimal solution: [0, 3, 8, 10] 14
+    """
+    return _extremum("Maximum", term, others, condition)
+
+
+@_constants_as_integers
+def Minimum(term, *others, condition=None):
+    """
+    Builds and returns a component Minimum (that becomes a constraint when subject to a condition).
+    The component represents the smallest value taken by the terms, which is typically compared with a value or a variable, as in Minimum(x) >= 2.
+
+    :param term: the first term on which the minimum applies
+    :param others: the other terms (if any) on which the minimum applies
+    :param condition: a condition directly specified for the minimum (typically, None)
+    :return: a component/constraint Minimum
+    :example:
+        # fair division: maximizing the smallest share given to an agent
+        x = VarArray(size=4, dom=range(100))  # x[i] is the share given to the ith agent
+
+        satisfy(
+           Sum(x) == 100
+        )
+
+        maximize(
+           Minimum(x)
+        )
+
+        # an optimal solution: [25, 25, 25, 25] 25
+    """
+    return _extremum("Minimum", term, others, condition)
+
+
+def _extremum_arg(name, term, others, rank, condition):
+    # the component MaximumArg (or MinimumArg, whose name is given) of the terms, possibly subject to the specified condition
+    terms = flatten(term, others)
+    terms = [Sum(t) if isinstance(t, ScalarProduct) else t for t in terms]  # to have partial constraints
+    # a constant (as Sum([]), or x >= x simplified into 1 by Node.build()) is an integer
+    terms = [t.val if isinstance(t, ConstraintDummyConstant) else t.cnt if type(t) is Node and t.type is TypeNode.INT else t for t in terms]
+    if len(terms) == 0:
+        error(name + "() requires at least one term")
+    for t in terms:
+        if type(t) is bool:
+            error(name + "() does not accept Booleans as terms, which is the case of " + str(t))
+        if isinstance(t, Variable) and t.dom.type != TypeVar.INTEGER:
+            error(name + "() requires integer variables (or expressions), which is not the case of " + str(t))
+    checkType(terms, ([Variable, Node, int], [PartialConstraint]))
+    checkType(rank, (type(None), TypeRank))
+    condition = Condition.build_condition(condition)
+    if isinstance(condition, ConditionSet) and len(condition.t) == 0 or isinstance(condition, ConditionInterval) and condition.min > condition.max:
+        # the index never belongs to an empty set: false with 'in', and always true with 'not in'
+        return ConstraintDummyConstant(0 if condition.operator == TypeConditionOperator.IN else 1)
+    if all(isinstance(t, int) for t in terms):
+        error(name + "() requires at least one variable (or expression), and not only integers, which is not the case of " + str(terms))
+    if len(terms) == 1:  # no constraint (XCSP3 requires at least two terms): the index of a single term is 0
+        return _constant_with_condition(0, condition)
+    # each integer (whose index counts) is replaced by its own auxiliary variable, the parsers of XCSP3 not accepting integers in the list
+    terms = auxiliary().replace_ints(terms)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms)
+    return _wrapping_by_complete_or_partial_constraint((ConstraintMaximumArg if name == "MaximumArg" else ConstraintMinimumArg)(terms, rank, condition))
+
+
+@_constants_as_integers
+def MaximumArg(term, *others, rank=None, condition=None):
+    """
+    Builds and returns a component MaximumArg (that becomes a constraint when subject to a condition).
+    The component represents the index of a term taking the largest value (with 'rank', the first or the last such index).
+
+    :param term: the first term on which the maximum applies
+    :param others: the other terms (if any) on which the maximum applies
+    :param rank: ranking condition on the index (ANY, FIRST or LAST); ANY if None
+    :param condition: a condition directly specified for the maximum (typically, None)
+    :return: a component/constraint MaximumArg
+    :example:
+        # identifying the most loaded machine (the one with the greatest load)
+        x = VarArray(size=4, dom=range(20))  # x[i] is the load of the ith machine
+        y = Var(dom=range(4))  # y is the index of the most loaded machine
+
+        satisfy(
+           AllDifferent(x),
+
+           MaximumArg(x) == y
+        )
+
+        # a solution: [0, 1, 2, 3] 3
+    :example:
+        # with 'rank', when several machines have the greatest load (here, the last such one is wanted)
+        z = VarArray(size=4, dom=range(3))
+
+        satisfy(
+           MaximumArg(z, rank=TypeRank.LAST) == 3
+        )
+    """
+    return _extremum_arg("MaximumArg", term, others, rank, condition)
+
+
+@_constants_as_integers
+def MinimumArg(term, *others, rank=None, condition=None):
+    """
+    Builds and returns a component MinimumArg (that becomes a constraint when subject to a condition).
+    The component represents the index of a term taking the smallest value (with 'rank', the first or the last such index).
+
+    :param term: the first term on which the minimum applies
+    :param others: the other terms (if any) on which the minimum applies
+    :param rank: ranking condition on the index (ANY, FIRST or LAST); ANY if None
+    :param condition: a condition directly specified for the minimum (typically, None)
+    :return: a component/constraint MinimumArg
+    :example:
+        # identifying the cheapest supplier
+        x = VarArray(size=4, dom=range(50))  # x[i] is the price proposed by the ith supplier
+        y = Var(dom=range(4))  # y is the index of the cheapest supplier
+
+        satisfy(
+           AllDifferent(x),
+
+           Sum(x) == 100,
+
+           MinimumArg(x) == y
+        )
+
+        # a solution: [0, 3, 48, 49] 0
+    :example:
+        # with 'rank', when several suppliers propose the smallest price (here, the last one is wanted)
+        x = VarArray(size=4, dom=range(3))  # x[i] is the price proposed by the ith supplier
+
+        satisfy(
+           MinimumArg(x, rank=TypeRank.LAST) == 3
+        )
+    """
+    return _extremum_arg("MinimumArg", term, others, rank, condition)
+
+
+@_constants_as_integers
+def Channel(list1, list2=None, *, start_index1=0, start_index2=0):
+    """
+    Builds a constraint Channel between the two specified lists.
+    With two lists x and y, x[i] = j iff y[j] = i (typically, a permutation and its inverse); with a single list x, x[i] = j iff x[j] = i.
+    With a list of 0/1 variables and a variable z, the list contains a unique 1, at the index given by z.
+
+    :param list1: the first list to be channeled
+    :param list2: the second list to be channeled
+    :param start_index1: the number used for indexing the first variable in the first list (0, by default)
+    :param start_index2: the number used for indexing the first variable in the second list (0, by default)
+    :return: a constraint Channel
+    :example:
+        # n-queens: the dual model, where the queen of each row and the queen of each column are linked
+        x = VarArray(size=8, dom=range(8))  # x[i] is the column of the queen in the ith row
+        y = VarArray(size=8, dom=range(8))  # y[j] is the row of the queen in the jth column
+
+        satisfy(
+           Channel(x, y)
+        )
+
+        # a solution: [0, 1, 2, 3, 4, 5, 6, 7]
+    :example:
+        # with a single list of 0/1 variables and a variable: the position of the unique 1
+        b = VarArray(size=8, dom={0, 1})
+        z = Var(dom=range(8))
+
+        satisfy(
+           Channel(b, z)
+        )
+
+        # a solution: [0, 0, 0, 0, 0, 0, 0, 1] 7
+    """
+    list1 = flatten(list1)
+    checkType(list1, [Variable])
+    if list2:
+        list2 = flatten(list2)
+        checkType(list2, [Variable])
+        if options.mini:
+            assert len(list1) == len(list2)
+            return [list1[list2[i]] == i for i in range(len(list1))]
+    checkType(start_index1, int)
+    checkType(start_index2, int)
+    assert start_index2 == 0 or list2 is not None, "start_index2 is defined while list2 is not specified"
+    return ECtr(ConstraintChannel(list1, start_index1, list2, start_index2))
+
+
+''' Packing and Scheduling Constraints '''
+
+
+def _is_mixed_list(t, index=-1):
+    present_int, present_var, present_node = False, False, False
+    for v in t:
+        v = v if index == -1 else v[index]
+        if isinstance(v, (int, ConstraintDummyConstant)):
+            present_int = True
+        elif isinstance(v, Variable):
+            present_var = True
+        elif isinstance(v, Node):
+            present_node = True
+        if (present_int and present_var) or (present_int and present_node) or (present_var and present_node):
+            return True
+    return False
+
+
+def _avoid_mixed_list(t):  # TODO for simple lists here, and for tuples?
+    if _is_mixed_list(t):
+        for i, v in enumerate(t):  # replacing integers
+            if isinstance(v, int):
+                t[i] = auxiliary().replace_int(v)
+
+
+@_constants_as_integers
+def NoOverlap(tasks=None, *, origins=None, lengths=None, zero_ignored=True):
+    """
+    Builds and returns a constraint NoOverlap.
+    The tasks, each one given by an origin and a length, cannot overlap (in time for 1D tasks, in the plane for 2D rectangles).
+
+    Either the tasks are specified as pairs, or the tasks are given by the named parameters origins and lengths.
+
+    :param tasks: the tasks given as pairs composed of an origin and a length
+    :param origins: the origins of the tasks
+    :param lengths: the lengths of the tasks
+    :param zero_ignored: if True, the tasks with length 0 must be discarded
+    :return: a constraint NoOverlap
+    :example:
+        # scheduling on a single machine: the tasks cannot overlap in time
+        s = VarArray(size=4, dom=range(20))  # s[i] is the starting time of the ith task
+
+        satisfy(
+           NoOverlap(origins=s, lengths=[3, 5, 2, 4])
+        )
+
+        # a solution: [0, 3, 8, 10]
+    :example:
+        # packing rectangles in a 10x10 square: the rectangles cannot overlap in the plane
+        widths, heights = [4, 3, 5], [2, 6, 3]
+        x = VarArray(size=3, dom=range(10))
+        y = VarArray(size=3, dom=range(10))
+
+        satisfy(
+           NoOverlap(origins=[(x[i], y[i]) for i in range(3)], lengths=[(widths[i], heights[i]) for i in range(3)]),
+
+           [(x[i] + widths[i] <= 10, y[i] + heights[i] <= 10) for i in range(3)]
+        )
+
+        # a solution: [1, 7, 0] [2, 4, 5]
+    :example:
+        # with 'zero_ignored' set to False, the tasks of length 0 are not discarded any more,
+        # and so, cannot be put at the same time as another task
+        s = VarArray(size=3, dom=range(10))  # s[i] is the starting time of the ith task
+
+        satisfy(
+           NoOverlap(origins=s, lengths=[2, 0, 3], zero_ignored=False)
+        )
+    """
+    if tasks is not None:
+        assert origins is None and lengths is None
+        tasks = list(tasks) if isinstance(tasks, (tuple, set, frozenset, types.GeneratorType)) else tasks
+        if len(tasks) <= 1:
+            warning("A constraint NoOverlap discarded because defined with " + str(len(tasks)) + " task", "nooverlap_" + str(len(tasks)) + "_task")
+            return ConstraintDummyConstant(1)  # return None
+        assert isinstance(tasks, list) and len(tasks) > 0
+        for i, task in enumerate(tasks):
+            assert isinstance(task, (tuple, list)) and len(task) in (2, 3)
+            if len(task) == 3:
+                assert task[2] is None
+                tasks[i] = task[:2]
+        origins, lengths = zip(*tasks)
+    if isinstance(origins, zip):
+        origins = list(origins)
+    if isinstance(lengths, zip):
+        lengths = list(lengths)
+    if len(origins) == 2 and isinstance(lengths, (tuple, list)) and len(lengths) == 2 and all(
+            isinstance(t, (list, tuple)) for t in [origins[0], origins[1], lengths[0], lengths[1]]) and len(
+        origins[0]) != 2:
+        assert len(origins[0]) == len(origins[1]) == len(lengths[0]) == len(lengths[1])
+        origins = [(origins[0][i], origins[1][i]) for i in range(len(origins[0]))]
+        lengths = [(lengths[0][i], lengths[1][i]) for i in range(len(lengths[0]))]
+    if any(isinstance(v, Node) for v in origins):
+        origins = [auxiliary().replace_node(v) if isinstance(v, Node) else v for v in origins]
+    _avoid_mixed_list(origins)
+    checkType(origins, [int, Variable])
+    if not isinstance(origins[0], (int, Variable)) and not isinstance(origins[0], tuple):  # if 2D but not tuples
+        origins = [tuple(origin) for origin in origins]
+    lengths = [lengths for _ in range(len(origins))] if isinstance(lengths, int) else lengths
+    if any(isinstance(v, Node) for v in lengths):
+        lengths = [auxiliary().replace_node(v) if isinstance(v, Node) else v for v in lengths]
+    if not isinstance(lengths[0], (int, Variable)) and not isinstance(lengths[0], tuple):  # if 2D but not tuples
+        lengths = [tuple(length) for length in lengths]
+    _avoid_mixed_list(lengths)
+    checkType(lengths, ([int, Variable, Node]))
+    if isinstance(origins, list) and len(origins) > 0 and isinstance(origins[0], tuple) and len(origins[0]) == 2:  # if 2D
+        # currently, only variables are authorized in origins
+        origins = [(auxiliary().replace_int(u) if isinstance(u, int) else u, auxiliary().replace_int(v) if isinstance(v, int) else v)
+                   for (u, v) in origins]
+    if isinstance(lengths, list) and len(lengths) > 0 and isinstance(lengths[0], tuple) and len(lengths[0]) == 2:  # if 2D
+        # for the moment, we do not keep nodes in NoOverlap. TODO to be changed?
+        if is_containing(lengths[0], Node):
+            lengths[0] = tuple(auxiliary().replace_nodes(list(lengths[0])))
+        if is_containing(lengths[1], Node):
+            lengths[1] = tuple(auxiliary().replace_nodes(list(lengths[1])))
+        # currently, can handle variables, integers and nodes
+        b0 = _is_mixed_list(lengths, 0)
+        b1 = _is_mixed_list(lengths, 1)
+        if b0 or b1:
+            lengths = [(
+                auxiliary().replace_int(u) if b0 and isinstance(u, int) else auxiliary().replace_node(u) if b0 and isinstance(u, Node) else u,
+                auxiliary().replace_int(v) if b1 and isinstance(v, int) else auxiliary().replace_node(v) if b1 and isinstance(v, Node) else v
+            ) for (u, v) in lengths]
+    if options.mini:
+        assert zero_ignored is True  # for the moment
+        t = []
+        if isinstance(origins[0], Variable):  # 1D
+            for i in range(len(origins)):
+                for j in range(i + 1, len(origins)):
+                    xi, xj = origins[i], origins[j]
+                    li, lj = lengths[i], lengths[j]
+                    if xi.dom.greatest_value() + li <= xj.dom.smallest_value() or xj.dom.greatest_value() + lj <= xi.dom.smallest_value():
+                        continue
+                    t.append((xi, xj) in to_starred_table_for_no_overlap1(xi, xj, li, lj))
+        else:  # 2D
+            for i in range(len(origins)):
+                for j in range(i + 1, len(origins)):
+                    xi, xj, yi, yj = origins[i][0], origins[j][0], origins[i][1], origins[j][1]
+                    wi, wj, hi, hj = lengths[i][0], lengths[j][0], lengths[i][1], lengths[j][1]
+                    if xi.dom.greatest_value() + wi <= xj.dom.smallest_value or xj.dom.greatest_value() + wj <= xi.dom.smallest_value():
+                        continue
+                    if yi.dom.greatest_value + hi <= yj.dom.smallest_value or yj.dom.greatest_value() + hj <= yi.dom.smallest_value():
+                        continue
+                    t.append((xi, xj, yi, yj) in to_starred_table_for_no_overlap2(xi, xj, yi, yj, wi, wj, hi, hj))
+        return t
+    all_unit = all(
+        isinstance(v, (int, Variable)) and (v == 1 if isinstance(v, int) else v.dom.smallest_value() == v.dom.greatest_value() == 1) for v in lengths)
+    if all_unit:
+        return AllDifferent(origins)
+    return ECtr(ConstraintNoOverlap(origins, lengths, zero_ignored))
+
+
+@_constants_as_integers
+def Cumulative(tasks=None, *, origins=None, lengths=None, ends=None, heights=None, condition=None):
+    """
+    Builds and returns a component Cumulative (that becomes a constraint when subject to a condition).
+    At any time, the total height (amount of resource) of the tasks in progress is subject to the condition, typically '<= capacity'.
+
+    Either the tasks are specified as tuples of size 3 or 4, or the tasks are given by the named parameters
+    origins, lengths and heights (and possibly ends).
+
+    :param tasks: the tasks, given as tuples of size 3 or 4 (typically, None when the named parameters are used)
+    :param origins: the origins of the tasks
+    :param lengths: the lengths of the tasks
+    :param ends: the ends of the tasks (typically, None)
+    :param heights: the heights (amounts of resource consumption) of the tasks
+    :param condition: a condition directly specified for the Cumulative (typically, None)
+    :return: a component/constraint Cumulative
+    :example:
+        # project scheduling: at any time, the tasks in progress cannot require more resource than available
+        s = VarArray(size=5, dom=range(20))  # s[i] is the starting time of the ith task
+
+        satisfy(
+           Cumulative(origins=s, lengths=[3, 5, 2, 4, 3], heights=[2, 1, 3, 2, 1]) <= 4
+        )
+
+        # a solution: [0, 0, 3, 5, 0]
+    :example:
+        # the durations can be given by variables, and the used quantity of resource be minimized
+        s = VarArray(size=5, dom=range(20))  # s[i] is the starting time of the ith task
+        d = VarArray(size=5, dom=range(1, 6))  # d[i] is the duration of the ith task
+        z = Var(dom=range(10))  # z is the quantity of resource that is used
+
+        satisfy(
+           Cumulative(origins=s, lengths=d, heights=[2, 1, 3, 2, 1]) <= z
+        )
+
+        minimize(
+           z
+        )
+
+        # an optimal solution: [0, 0, 1, 2, 2] 3
+    :example:
+        # the ends of the tasks can be given too, for example when they are needed elsewhere
+        s = VarArray(size=4, dom=range(20))  # s[i] is the starting time of the ith task
+        e = VarArray(size=4, dom=range(20))  # e[i] is the ending time of the ith task
+
+        satisfy(
+           Cumulative(origins=s, lengths=[3, 5, 2, 4], ends=e, heights=[2, 1, 3, 2]) <= 4,
+
+           Maximum(e) <= 12
+        )
+    """
+    if tasks is not None:
+        assert origins is None and lengths is None and ends is None and heights is None
+        tasks = list(tasks) if isinstance(tasks, (tuple, set, frozenset, types.GeneratorType)) else tasks
+        for task in tasks:
+            if not isinstance(task, (tuple, list)) or len(task) not in (3, 4):
+                error("A task of Cumulative() must be (origin, length, height) or (origin, length, end, height), which is not the case of " + str(task))
+            if len(task) != len(tasks[0]):
+                error("The tasks of Cumulative() must all have the same size, which is not the case of " + str(tasks[0]) + " and " + str(task))
+            if task[-1] is None:
+                error("The height of a task must be given in Cumulative(), which is not the case of " + str(task))
+        if len(tasks) == 0:
+            warning("A constraint Cumulative transformed because defined with 0 task", "cumulative_0_task")
+            return ConstraintDummyConstant(0)  # auxiliary().replace_int(0)
+        if len(tasks) == 1:
+            warning("A constraint Cumulative transformed because defined with 1 task only", "cumulative_1_task")
+            h = tasks[0][2 if len(tasks[0]) == 3 else 3]  # the height for the task
+            return h if isinstance(h, Variable) else ConstraintDummyConstant(h)  # auxiliary().replace_int(h)
+
+        assert len(tasks) > 0, "a cumulative constraint without no tasks"
+        assert isinstance(tasks, list) and len(tasks) > 0
+        v = len(tasks[0])
+        assert v in (3, 4) and any(isinstance(task, (tuple, list)) and len(task) == v for task in tasks)
+        if v == 3:
+            origins, lengths, heights = zip(*tasks)
+        else:
+            origins, lengths, ends, heights = zip(*tasks)
+    for name, values in (("origins", origins), ("lengths", lengths), ("heights", heights)):  # checked before flatten(), which discards None
+        if values is None or (isinstance(values, (tuple, list)) and any(v is None for v in flatten(values, keep_none=True, call_cp_array=False))):
+            error("The " + name + " of Cumulative() must be given, and cannot be None")
+    origins = flatten(origins)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(origins, nodes_too=True, int_too=False)
+    _avoid_mixed_list(origins)
+    checkType(origins, [Variable])
+    lengths = [lengths for _ in range(len(origins))] if isinstance(lengths, int) else flatten(lengths)
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(lengths, nodes_too=True)
+    _avoid_mixed_list(lengths)
+    checkType(lengths, ([Variable], [int]))
+    heights = [heights for _ in range(len(origins))] if isinstance(heights, int) else flatten(heights)
+    _avoid_mixed_list(heights)
+    for i, h in enumerate(heights):
+        if isinstance(h, PartialConstraint):
+            heights[i] = auxiliary().replace_partial_constraint(h)
+        elif isinstance(h, Node):
+            heights[i] = auxiliary().replace_node(h)
+        elif isinstance(h, ConstraintDummyConstant):
+            heights[i] = auxiliary().replace_int(h.val)
+    checkType(heights, ([Variable], [int]))
+    ends = flatten(ends) if ends is not None else ends  # ends is optional
+    checkType(ends, ([Variable], type(None)))
+    for name, values in (("lengths", lengths), ("heights", heights), ("ends", ends)):
+        if values is not None and len(values) != len(origins):
+            error("In Cumulative(), the number of " + name + " (" + str(len(values)) + ") must be the number of origins (" + str(len(origins)) + ")")
+    return _wrapping_by_complete_or_partial_constraint(ConstraintCumulative(origins, lengths, ends, heights, Condition.build_condition(condition)))
+
+
+@_constants_as_integers
+def BinPacking(partition, *partition_complement, sizes, limits=None, loads=None, condition=None):
+    """
+    Builds and returns a component BinPacking, which puts items of given sizes into bins.
+    The load of a bin (the total size of its items) must not exceed the specified limits, or be equal to the specified loads.
+
+    Capacities (limits or loads) can be given by integers or variables. When they are absent, BinPacking is a component
+    that must be subject to a condition, typically '<= k' where k is a value used as the same limit for all bins.
+
+    :param partition: the (first) term, typically a list of variables, on which the component applies (indicating how the items are partitioned into bins)
+    :param partition_complement: the other terms (if any) on which the component applies
+    :param sizes: the sizes of the available items
+    :param limits: the limits of bins (if loads is None)
+    :param loads: the loads of bins (if limits is None)
+    :param condition: a condition directly specified for the BinPacking (typically, None)
+    :return: a component/constraint BinPacking
+    :example:
+        # bin packing: the items put in a bin cannot exceed its capacity
+        sizes = [4, 3, 5, 2, 6, 3]
+        x = VarArray(size=6, dom=range(4))  # x[i] is the bin in which the ith item is put
+
+        satisfy(
+           BinPacking(x, sizes=sizes) <= 10
+        )
+
+        # a solution: [0, 0, 1, 0, 2, 1]
+    :example:
+        # with 'limits', when the bins have different capacities, and with 'loads' to get their loads
+        sizes = [4, 3, 5, 2, 6, 3]
+        x = VarArray(size=6, dom=range(4))  # x[i] is the bin in which the ith item is put
+        loads = VarArray(size=4, dom=range(24))  # loads[j] is the load of the jth bin
+
+        satisfy(
+           BinPacking(x, sizes=sizes, limits=[10, 8, 12, 6]),
+
+           BinPacking(x, sizes=sizes, loads=loads)
+        )
+
+        # a solution: [0, 0, 1, 0, 2, 1] [9, 8, 6, 0]
+    """
+    terms = flatten(partition, partition_complement)
+    assert len(terms) > 0, "A binPacking with an empty scope"
+    auxiliary().replace_partial_constraints_and_constraints_with_condition_and_possibly_nodes(terms, nodes_too=True)
+    checkType(terms, [Variable])
+    if isinstance(sizes, int):
+        sizes = [sizes for _ in range(len(terms))]
+    sizes = flatten(sizes)
+    checkType(sizes, [int])
+    assert len(terms) == len(sizes), str(len(terms)) + " vs " + str(len(sizes))
+    assert limits is None or loads is None
+    if limits is not None:
+        assert condition is None
+        checkType(limits, ([Variable], [int]))
+        return ECtr(ConstraintBinPacking(terms, sizes, limits=limits))
+    if loads is not None:
+        assert condition is None
+        checkType(loads, ([Variable], [int]))
+        return ECtr(ConstraintBinPacking(terms, sizes, loads=loads))
+    return _wrapping_by_complete_or_partial_constraint(ConstraintBinPacking(terms, sizes, condition=Condition.build_condition(condition)))
+
+
+@_constants_as_integers
+def Knapsack(selection, *selection_complement, weights, wlimit=None, wcondition=None, profits, pcondition=None):
+    """
+    Builds and returns a component Knapsack, which selects items (possibly several copies of each) having weights and profits.
+    The total weight of the selected items must respect the capacity, and the component represents their total profit.
+
+    The condition on the weights is given by either wlimit or wcondition; the condition on the profits is typically
+    specified outside the function, as in Knapsack(...) >= 15.
+
+    :param selection: the (first) term, typically a list of variables on which the component applies (indicating how many copies of each item are selected)
+    :param selection_complement: the other terms (if any) on which the component applies
+    :param weights: the weights associated with the items
+    :param wlimit: the limit of the knapsack (if wcondition is None)
+    :param wcondition: the condition on the knapsack (if wlimit is None)
+    :param profits: the benefits associated with the items
+    :param pcondition: a condition on the profits directly specified for the Knapsack (typically, None)
+    :return: a component/constraint Knapsack
+    :example:
+        # knapsack: selecting the items so as to maximize the profit, while respecting the capacity
+        weights, profits = [4, 3, 5, 2, 6, 3], [7, 4, 9, 2, 8, 5]
+        x = VarArray(size=6, dom={0, 1})  # x[i] is 1 iff the ith item is selected
+
+        satisfy(
+           Knapsack(x, weights=weights, wlimit=10, profits=profits) >= 15
+        )
+
+        # a solution: [0, 0, 1, 1, 0, 1]
+    :example:
+        # the condition on the weight can be given explicitly, and the profit be linked to a variable
+        weights, profits = [4, 3, 5, 2, 6, 3], [7, 4, 9, 2, 8, 5]
+        x = VarArray(size=6, dom={0, 1})  # x[i] is 1 iff the ith item is selected
+        z = Var(dom=range(36))  # z is the total profit
+
+        satisfy(
+           Knapsack(x, weights=weights, wcondition=le(10), profits=profits, pcondition=("eq", z))
+        )
+
+        maximize(
+           z
+        )
+
+        # an optimal solution: [0, 0, 1, 1, 0, 1] 16
+    """
+
+    terms = flatten(selection, selection_complement)
+    assert len(terms) > 0, "A Knapsack with an empty scope"
+    assert len(terms) == len(weights) == len(profits)
+    assert (wlimit is None) != (wcondition is None)
+    if wlimit:
+        checkType(wlimit, (int, Variable))
+        wcondition = le(wlimit)
+    checkType(wcondition, Condition)
+    return _wrapping_by_complete_or_partial_constraint(ConstraintKnapsack(terms, weights, wcondition, profits, Condition.build_condition(pcondition)))
+
+
+@_constants_as_integers
+def Flow(term, *others, balance, arcs, weights=None, condition=None):
+    """
+    Builds and returns a component Flow (that becomes a constraint when subject to a condition).
+
+    The component ensures that the flow circulating on the specified arcs respects the balance of each node.
+    When weights are specified, the value of the component is the cost of the flow.
+
+    :param term: the (first) term, typically a list of variables, one per arc
+    :param others: the other terms (if any) on which the component applies
+    :param balance: the balance of the nodes, given by an integer (the same for all of them) or a list of integers
+    :param arcs: the list of arcs, each arc being a pair (tuple) of node numbers
+    :param weights: the weight (cost) of the arcs, given by an integer or a list of integers (None, by default)
+    :param condition: a condition directly specified for the Flow (typically, None)
+    :return: a component Flow
+    :example:
+        # transportation: what is sent through the arcs must respect the demands of the nodes, at a bounded cost
+        arcs = [(0, 1), (0, 2), (1, 3), (2, 3)]
+        f = VarArray(size=4, dom=range(6))  # f[k] is the quantity sent through the kth arc
+
+        satisfy(
+           Flow(f, balance=[5, 0, 0, -5], arcs=arcs, weights=[2, 3, 1, 4]) <= 40
+        )
+
+        # a solution: [0, 5, 0, 5]
+    :example:
+        # the cost of the flow can be linked to a variable, so as to be minimized
+        arcs = [(0, 1), (0, 2), (1, 3), (2, 3)]
+        f = VarArray(size=4, dom=range(6))  # f[k] is the quantity sent through the kth arc
+        z = Var(dom=range(100))  # z is the cost of the transportation
+
+        satisfy(
+           Flow(f, balance=[5, 0, 0, -5], arcs=arcs, weights=[2, 3, 1, 4]) == z
+        )
+
+        minimize(
+           z
+        )
+
+        # an optimal solution: [5, 0, 5, 0] 15
+    """
+    terms = flatten(term, others)
+    assert len(terms) > 0, "A Flow with an empty scope"
+    if isinstance(weights, int):
+        weights = [weights for _ in range(len(terms))]
+    assert len(terms) == len(arcs) and (weights is None or len(terms) == len(weights))
+    assert isinstance(arcs, list)
+    for i, arc in enumerate(arcs):
+        if isinstance(arc, list):
+            arcs[i] = tuple(arc)
+    assert all(isinstance(arc, tuple) and len(arc) == 2 and isinstance(arc[0], int) and isinstance(arc[1], int) for arc in arcs)
+    all_nodes = {node for arc in arcs for node in arc}
+    mina, maxa = min(all_nodes), max(all_nodes)
+    if isinstance(balance, int):
+        balance = [balance for _ in range(maxa - mina + 1)]
+    assert maxa - mina + 1 == len(balance) and all(v in all_nodes for v in range(mina, maxa + 1))
+    return _wrapping_by_complete_or_partial_constraint(ConstraintFlow(terms, balance, arcs, weights, Condition.build_condition(condition)))
+
+
+''' Constraints on Graphs'''
+
+
+@_constants_as_integers
+def Circuit(successors, *successors_complement, start_index=0, size=None, no_self_looping=False):
+    """
+    Builds and returns a constraint Circuit.
+    With x[i] being the successor of the ith node, the arcs must form a single circuit; a node i such that x[i] = i is not part of it.
+
+    :param successors: the (first) term on which the constraint applies (indicating the successors of variables)
+    :param successors_complement: the other terms (if any) on which the constraint applies
+    :param start_index: the number used for indexing the first variable/node in the list of terms
+    :param size: the size of the circuit (a constant, a variable or None)
+    :return: a constraint Circuit
+    :example:
+        # travelling salesman: the successors of the cities must form a single circuit visiting all of them
+        distances = [[0, 4, 7, 3], [4, 0, 5, 6], [7, 5, 0, 2], [3, 6, 2, 0]]
+        x = VarArray(size=4, dom=range(4))  # x[i] is the city visited just after the ith city
+
+        satisfy(
+           Circuit(x, no_self_looping=True)
+        )
+
+        minimize(
+           Sum(cp_array(distances[i])[x[i]] for i in range(4))
+        )
+
+        # an optimal solution: [1, 2, 3, 0] 14
+    :example:
+        # without 'no_self_looping', a city can be skipped (a self-loop meaning 'not visited')
+        y = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           Circuit(y, size=3)
+        )
+
+        # a solution: [0, 2, 3, 1]
+    :example:
+        # with 'start_index', when the nodes are not numbered from 0 (here, the cities are numbered from 1)
+        x = VarArray(size=4, dom=range(1, 5))  # x[i] is the city visited just after the (i+1)th city
+
+        satisfy(
+           Circuit(x, start_index=1)
+        )
+    """
+    successors = flatten(successors, successors_complement)
+    checkType(successors, [Variable])
+    checkType(start_index, int)
+    checkType(size, (int, Variable, type(None)))
+    assert size is None or no_self_looping == False
+    if size is not None and size == len(successors):
+        size = None
+        no_self_looping = True
+    if no_self_looping:
+        assert start_index == 0
+        return [successors[i] != i for i in range(len(successors))] + [ECtr(ConstraintCircuit(successors, start_index, size))]
+    return ECtr(ConstraintCircuit(successors, start_index, size))
+
+
+''' Other Constraints '''
+
+
+@_constants_as_integers
+def Clause(variables, *variables_complement, phases=None):
+    """
+    Builds and returns a constraint Clause.
+    At least one literal of the clause must be true, a literal being a 0/1 variable or its negation (according to 'phases').
+
+    :param variables: the first term on which the constraint applies
+    :param variables_complement: the other terms (if any) on which the constraint applies
+    :param phases: the phases of the literals: True for the variable itself, False for its negation (by default, all True); a literal ~x has
+                   the opposite phase of the variable x
+    :return: a constraint Clause
+    :example:
+        # a SAT-like model: at least one of the three literals of the clause must be true
+        b = VarArray(size=3, dom={0, 1})  # the literals are b[0], not(b[1]) and b[2]
+
+        satisfy(
+           b[1] == 1,  # the second literal is then false
+
+           Clause(b, phases=[True, False, True])
+        )
+
+        # a solution: [0, 1, 1]
+    """
+    variables = flatten(variables, variables_complement)
+    phases = [True] * len(variables) if phases is None else flatten(phases)  # (the literals were negative by default, #205)
+    assert len(variables) == len(phases)
+    for i, literal in enumerate(variables):
+        if isinstance(literal, Node) and literal.type == TypeNode.NOT and literal.cnt[0].type == TypeNode.VAR:  # ~x: the variable x, opposite phase
+            variables[i], phases[i] = literal.cnt[0].cnt, not phases[i]
+    checkType(variables, [Variable])
+    checkType(phases, [bool])
+    return ECtr(ConstraintClause(variables, phases))
+
+
+def Adhoc(form, note=None, **d):
+    """
+    Builds a constraint adhoc from the specified arguments.
+    It represents a form of constraint that is not defined in XCSP3, given by a label and some arguments, for the solvers able to handle it.
+
+    :param form: a label (string) indicating the form of the adhoc constraint
+    :param note: a comment
+    :param d: a dictionary with all arguments of the adhoc constraint
+    :return: a constraint Adhoc
+    :example:
+        # an ad-hoc form of constraint, only understood by some specific solvers
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           Adhoc("mySpecificForm", list=x, coeffs=[1, 2, 3, 4])
+        )
+
+        # a solution: [0, 0, 0, 0]
+    """
+    return ECtr(ConstraintAdhoc(form, note, d))
+
+
+''' Objectives '''
+
+
+def _optimize(term, minimization):
+    if options.to_csp:
+        if options.to_csp[0] in ('(', '['):
+            assert len(options.to_csp) > 5 and options.to_csp[-1] in (')', ']') and options.to_csp[3] == ','
+            op, k = options.to_csp[1:3], int(options.to_csp[4:-1])
+        else:
+            op, k = "eq", int(options.to_csp)
+        if isinstance(term, Node):
+            #  term.mark_as_used() # TODO do we need to do that?
+            return satisfy(expr(op, term, k), no_comment_tags_extraction=True)
+        op = TypeConditionOperator.value_of(op)
+        if op == TypeConditionOperator.LT:
+            return satisfy(term < k)
+        if op == TypeConditionOperator.LE:
+            return satisfy(term <= k)
+        if op == TypeConditionOperator.GE:
+            return satisfy(term >= k)
+        if op == TypeConditionOperator.GT:
+            return satisfy(term > k)
+        if op == TypeConditionOperator.EQ:
+            return satisfy(term == k)
+        assert op == TypeConditionOperator.NE
+        return satisfy(term != k)
+
+    ObjEntities.items = []  # TODO currently, we overwrite the objective if one was posted
+    if isinstance(term, PartialConstraint):
+        if isinstance(term.constraint, (ConstraintMaximumArg, ConstraintMinimumArg)):  # there is no type maximumArg (or minimumArg) of objectives
+            error(("MaximumArg()" if isinstance(term.constraint, ConstraintMaximumArg) else "MinimumArg()") + " cannot be an objective")
+        if isinstance(term.constraint, (ConstraintElement, ConstraintCount)) \
+                or isinstance(term.constraint, ConstraintNValues) and term.constraint.arguments[TypeCtrArg.EXCEPT].content is not None:
+            term = auxiliary().replace_partial_constraint(term)  # (an objective of type nValues has no element <except>)
+        elif isinstance(term.constraint, (ConstraintSum, ConstraintMaximum, ConstraintMinimum)):
+            t = term.constraint.arguments[TypeCtrArg.LIST]
+            if len(t.content) == 1 and TypeCtrArg.COEFFS not in term.constraint.arguments:
+                term = t.content[0]  # this was a sum/maximum/minimum with only one term, so we just consider this term as an expression to be optimized
+    if isinstance(term, ScalarProduct):
+        term = Sum(term)  # to have a PartialConstraint
+    if isinstance(term, ConstraintDummyConstant):  # as NValues() of a single term, or Sum() and Count() of no term
+        error("The objective is the constant " + str(term.val) + ": there is nothing to optimize")
+    checkType(term, (Variable, Node, PartialConstraint)), "Did you forget to use Sum, e.g., as in Sum(x[i]*3 for i in range(10))"
+    satisfy(pc == var for (pc, var) in auxiliary().get_collected_and_clear())
+
+    comment, _, tag, _ = comments_and_tags_of_parameters_of(function_name="minimize" if minimization else "maximize", args=[term])
+    way = TypeCtr.MINIMIZE if minimization else TypeCtr.MAXIMIZE
+    if isinstance(term, (Variable, Node)):
+        if isinstance(term, Node):
+            term.mark_as_used()
+        return EObjective(ObjectiveExpression(way, term)).note(comment[0]).tag(tag[0])  # TODO why only one tag?
+    else:
+        return EObjective(ObjectivePartial(way, term)).note(comment[0]).tag(tag[0])
+
+
+deco_exec = False
+
+
+def deco(f):
+    global deco_exec
+
+    deco_exec = True
+
+    return f
+
+
+@deco
+def minimize(term):
+    """
+    Builds and returns an objective that corresponds to minimizing the specified term.
+    This term can be a variable, an expression, a component Sum, Count, NValues, Maximum, Minimum, etc.
+
+    :param term: the term to be minimized
+    :return: the objective to be minimized
+    :example:
+        # the values of x must be in decreasing order, and their sum as small as possible
+        x = VarArray(size=3, dom=range(10))
+
+        satisfy(
+           Decreasing(x)
+        )
+
+        # the objective is the sum of the values (its optimal value is given after the solution below)
+        minimize(
+           Sum(x)
+        )
+
+        # an optimal solution: [0, 0, 0] 0
+    """
+    return _optimize(term, True)
+
+
+def maximize(term):
+    """
+    Builds and returns an objective that corresponds to maximizing the specified term.
+    This term can be a variable, an expression, a component Sum, Count, NValues, Maximum, Minimum, etc.
+
+    :param term: the term to be maximized
+    :return: the objective to be maximized
+    :example:
+        # the values of x must be in increasing order, and their sum as large as possible
+        x = VarArray(size=3, dom=range(10))
+
+        satisfy(
+           Increasing(x)
+        )
+
+        # the objective is the sum of the values (its optimal value is given after the solution below)
+        maximize(
+           Sum(x)
+        )
+
+        # an optimal solution: [9, 9, 9] 27
+    """
+    return _optimize(term, False)
+
+
+''' Annotations '''
+
+
+def annotate(*, decision=None, output=None, varHeuristic=None, valHeuristic=None, filtering=None, prepro=None, search=None, restarts=None):
+    """
+    Builds and returns a list of annotations, used to guide the solver.
+
+    Each kind of annotation can be specified at most one time.
+
+    :param decision: the list of decision variables
+    :param output: the list of variables whose values must be output
+    :param varHeuristic: the annotation about the variable ordering heuristic
+    :param valHeuristic: the annotation about the value ordering heuristic
+    :param filtering: the annotation about the filtering (propagation) to be used
+    :param prepro: the annotation about preprocessing
+    :param search: the annotation about search
+    :param restarts: the annotation about restarts
+    :return: a list of annotations
+    :example:
+        # the solver is guided by indicating the variables on which it must take decisions
+        x = VarArray(size=3, dom=range(3))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        # the solver branches only on the variables of x (each kind of annotation is given at most once)
+        annotate(
+           decision=x
+        )
+
+        # a solution: [0, 1, 2]
+    """
+
+    def add_annotation(obj, Ann):
+        if obj:
+            ann = Ann(obj)
+            assert type(ann) not in AnnEntities.items_types, "This type of annotation can be specified only one time"
+            annotations.append(EAnnotation(ann))
+
+    annotations = []
+    add_annotation(decision, AnnotationDecision)
+    add_annotation(output, AnnotationOutput)
+    add_annotation(varHeuristic, AnnotationVarHeuristic)
+    add_annotation(valHeuristic, AnnotationValHeuristic)
+    add_annotation(filtering, AnnotationFiltering)
+    add_annotation(prepro, AnnotationPrepro)
+    add_annotation(search, AnnotationSearch)
+    add_annotation(restarts, AnnotationRestarts)
+    return annotations
+
+
+''' Helpers '''
+
+
+def posted(i=None, j=None):
+    """
+    Returns the list of posted constraints when no parameter is specified.
+    Returns the constraints of the ith posted operation, otherwise; possibly
+    a subset is returned if the second parameter j is specified.
+
+    :param i: the number/index of the posting operation (i.e., call to satisfy())
+    :param j: the number (or slice) of the constraint with respect to the ith posting operation
+    :example:
+        # the constraints that have been posted can be displayed, and possibly reused
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        satisfy(
+           [x[i] < x[i + 1] for i in range(3)]
+        )
+
+        print(posted())  # all the posted constraints
+        print(posted(1))  # the constraints posted by the second call to satisfy()
+    :example:
+        # with a second parameter, only a subset of the constraints of a posting operation is returned
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           AllDifferent(x),
+
+           x[0] == 3,
+
+           x[1] != 2
+        )
+
+        print(posted(0, 1))  # the second constraint of the first call to satisfy()
+        print(posted(0, slice(1, 3)))  # the second and third constraints
+    """
+    t = []
+    if i is None or i is ALL:  # all posted constraints are returned
+        assert j is None
+        for item in CtrEntities.items:
+            assert isinstance(item, EToSatisfy)
+            t.extend(c for c in item.flat_constraints())
+    else:
+        assert isinstance(i, (int, slice))
+        if j is None:
+            for item in [CtrEntities.items[i]] if isinstance(i, int) else CtrEntities.items[i]:
+                assert isinstance(item, EToSatisfy)
+                t.extend(c for c in item.flat_constraints())
+        else:
+            assert isinstance(i, int) and isinstance(j, (int, slice))
+            item = CtrEntities.items[i]
+            if isinstance(j, int):
+                t.append(item.flat_constraints()[j])
+            else:
+                t.extend(c for c in item.flat_constraints()[j])
+    return t if len(t) == 0 else ListCtr(t)
+
+
+def objective():
+    """
+    Returns the objective of the model, or None if no one has been defined by calling either the function minimize() or the function maximize()
+    :example:
+        # the objective of the model can be displayed
+        x = VarArray(size=4, dom=range(10))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        minimize(
+           Sum(x)
+        )
+
+        print(objective())
+    """
+    assert len(ObjEntities.items) <= 1
+    return ObjEntities.items[0].constraint if len(ObjEntities.items) == 1 else None
+
+
+def unpost(i=None, j=None):
+    """
+    If no parameter is specified, discards the last posting operation (call to satisfy).
+    If two parameters are specified, discards the constraint(s) whose index(es) is specified
+    by the second argument j (possibly a slice) inside the posting operation whose index is specified by the first parameter.
+    If one parameter is specified, discards the posting operation whose index is specified,
+    except if the constant ALL is used, in which case all posted constraints are discarded.
+
+    :param i: the index of the posting operation (call to satisfy) to be discarded (if j is None)
+    :param j: the index (or slice) of the constraint(s) to be removed inside the group of constraints
+              corresponding to the specified posting operation
+    :example:
+        # a constraint that has been posted can be removed, for example when relaxing a model
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        satisfy(
+           x[0] == 3
+        )
+
+        unpost(1)  # the constraint posted by the second call to satisfy() is removed
+
+        # a solution: [0, 1, 2, 3]
+    :example:
+        # with a second parameter, only a subset of the constraints of a posting operation is removed
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           AllDifferent(x),
+
+           x[0] == 3,
+
+           x[1] != 2
+        )
+
+        unpost(0, 1)  # only the constraint x[0] == 3 is removed
+
+        # a solution: [0, 1, 2, 3]
+    """
+    if i is None:
+        i = -1
+    if j is None:
+        if i is ALL:
+            CtrEntities.items = []
+        else:
+            assert isinstance(i, (int, slice))
+            del CtrEntities.items[i]
+    else:
+        assert isinstance(i, int)
+        CtrEntities.items[i].delete(j)
+
+
+def value(model_variable, *, sol=-1):
+    """
+    Returns the value assigned to the specified variable when the solution at the specified index has been found
+
+    :param model_variable: a variable of the model
+    :param sol: the index of a found solution
+    :example:
+        # magic sequence: after solving, the value assigned to a variable can be obtained
+        x = VarArray(size=4, dom=range(5))
+
+        satisfy(
+           [Count(x, value=i) == x[i] for i in range(4)]
+        )
+
+        # a solution: 1 2
+        if solve() is SAT:
+           print(value(x[0]), value(x[1]))
+    """
+    assert isinstance(model_variable, Variable) and len(model_variable.values) > 0
+    return model_variable.values[sol]
+
+
+def values(model_variables, *model_variables_complement, sol=-1):
+    """
+    Returns the values assigned to the specified variables in a found solution, with the same structure as the variables.
+    By default, the last found solution is considered; another one can be selected with the parameter sol.
+
+    :param model_variables: the first term (typically, a list) containing variables on which the function applies
+    :param model_variables_complement: the other terms (if any) on which the function applies
+    :param sol: the order (index) of a found solution
+    :example:
+        # after solving, the values assigned to a list of variables can be obtained
+        x = VarArray(size=4, dom=range(4))
+
+        satisfy(
+           AllDifferent(x)
+        )
+
+        if solve(sols=ALL) is SAT:
+           print(values(x))  # the values of the last found solution
+           print(values(x, sol=0))  # the values of the first found solution
+    """
+    m = flatten(model_variables, model_variables_complement)
+    if isinstance(m, Variable):
+        return value(m, sol=sol)
+    if isinstance(m, (list, tuple, set, frozenset, types.GeneratorType)):
+        g = [value(v, sol=sol) for v in m]
+        return ListInt(g) if len(g) > 0 and (isinstance(g[0], (int, ListInt)) or g[0] == ANY) else g

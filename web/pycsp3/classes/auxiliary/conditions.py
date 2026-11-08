@@ -1,0 +1,428 @@
+from functools import total_ordering
+from types import GeneratorType
+
+from pycsp3.classes import main
+from pycsp3.classes.auxiliary.enums import TypeConditionOperator
+from pycsp3.classes.nodes import Node, TypeNode
+from pycsp3.classes.main.variables import Variable
+from pycsp3.tools.utilities import is_1d_list, is_1d_tuple, ANY, error
+
+LT, LE, GE, GT, EQ, NE, IN, NOTIN = [t for t in TypeConditionOperator]
+
+
+# if isinstance("zz", main.constraints.Parameter):  # TODO it is not working. why? In contrary,  main.variables.Variable is working.
+#     print("toto")
+
+
+@total_ordering
+class Condition:
+    def __init__(self, operator):
+        self.operator = operator
+        assert isinstance(operator, TypeConditionOperator), "the operator " + str(operator) + " should be of type TypeConditionOperator"
+
+    def _key(self):
+        return str(type(self)), str(self.operator)
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        return type(self) is type(other) and self._key() == other._key()
+
+    def __lt__(self, other):
+        return True if isinstance(other, (int, str)) or other == ANY else self._key() < other._key()
+
+    @staticmethod
+    def build_condition(condition):
+        if condition is None:
+            return None  # it may occur when building a partial constraint
+        if isinstance(condition, Condition):
+            return condition  # already built
+        condition = tuple(condition) if isinstance(condition, list) else condition  # we expect a condition to be given as a tuple (or a list)
+        assert isinstance(condition, tuple) and len(condition) == 2, "a condition must a pair, given as a tuple (or a list)"
+        operator = condition[0]
+        if isinstance(operator, str):
+            try:
+                operator = TypeConditionOperator.value_of(operator)
+            except ValueError:
+                error("The operator " + operator + " of the condition " + str(condition) + " is unknown (lt, le, ge, gt, eq, ne, in, notin, <, <=, >=, >, ==, !=)")
+        right_operand = list(condition[1]) if isinstance(condition[1], (set, frozenset, GeneratorType)) else condition[1]
+        if type(right_operand) is bool or isinstance(right_operand, (list, tuple)) and any(type(v) is bool for v in right_operand):
+            error("A Boolean cannot be the operand of a condition, which is the case of " + str(condition[1]))
+        # checkType(right_operand, (int, Variable, range, [int, Variable]))
+        if isinstance(right_operand, range) and right_operand.step != 1:
+            right_operand = list(right_operand)
+        if isinstance(operator, TypeConditionOperator) and (isinstance(right_operand, (int, Variable)) and not operator.is_rel()
+                                                            or isinstance(right_operand, (range, list, tuple, set, frozenset)) and not operator.is_set()):
+            error("The operator " + str(operator) + " of the condition " + str(condition) + " cannot be applied to " + str(condition[1]) + " (" +
+                  ("lt, le, ge, gt, eq or ne for an integer or a variable)" if operator.is_set() else "in or notin for a range or a set of integers)"))
+        if isinstance(right_operand, int):
+            return ConditionValue(operator, right_operand)
+        if isinstance(right_operand, Variable):
+            return ConditionVariable(operator, right_operand)
+        if isinstance(right_operand, range):
+            return ConditionInterval(operator, right_operand.start, right_operand.stop - 1)
+        if isinstance(right_operand, main.constraints.Parameter):
+            return ConditionParameter(operator, right_operand)
+        if isinstance(right_operand, (list, tuple, set, frozenset)):
+            for v in right_operand:
+                if not isinstance(v, int):
+                    error("The values of the condition " + str(operator) + " " + str(condition[1]) + " must be integers, which is not the case of " + str(v))
+            return ConditionSet(operator, set(right_operand))
+        error("The operand of the condition " + str(condition) + " must be an integer, a variable, a range or a set of integers")
+
+    def filtering(self, values):
+        pass
+
+    def str_tuple(self):
+        pass
+
+    def right_operand(self):
+        pass
+
+    def infix_string(self):
+        return self.operator.to_str() + " " + str(self.right_operand())
+
+    def __str__(self):
+        return "(" + str(self.operator) + "," + str(self.right_operand()) + ")"
+
+    def __repr__(self):
+        return self.__str__()
+
+
+class ConditionValue(Condition):
+    def __init__(self, operator, value):
+        super().__init__(operator)
+        assert operator.is_rel()
+        self.value = value
+
+    def _key(self):
+        return super()._key() + (self.value,)
+
+    def filtering(self, values):
+        if self.operator == EQ:  # we should avoid calling this (by directly giving the value in the tuple: write 6 instead of (eq(6)))
+            return (self.value,) if self.value in values else ()
+        if self.operator == NE:
+            return (v for v in values if v != self.value)
+        if self.operator == LT:
+            return (v for v in values if v < self.value)
+        if self.operator == LE:
+            return (v for v in values if v <= self.value)
+        if self.operator == GE:
+            return (v for v in values if v >= self.value)
+        if self.operator == GT:
+            return (v for v in values if v > self.value)
+        assert False
+
+    def str_tuple(self):
+        op_utf = TypeConditionOperator.to_utf(self.operator)
+        if self.operator in (EQ, NE, LE, GE):
+            return op_utf + str(self.value)
+        # <= and >= more readable than < and > (this is why we translate when possible)
+        if self.operator == LT:
+            return TypeConditionOperator.to_utf(LE) + str(self.value - 1) if isinstance(self.value, int) else op_utf + str(self.value)
+        if self.operator == GT:
+            return TypeConditionOperator.to_utf(GE) + str(self.value + 1) if isinstance(self.value, int) else op_utf + str(self.value)
+        assert False
+
+    def __repr__(self):
+        return self.str_tuple()
+
+    def right_operand(self):
+        return self.value
+
+
+class ConditionVariable(Condition):
+    def __init__(self, operator, variable):
+        super().__init__(operator)
+        assert operator.is_rel()
+        self.variable = variable
+
+    def _key(self):
+        return super()._key() + (self.variable,)
+
+    def filtering(self, values):
+        assert False, "Currently not implemented"
+
+    def str_tuple(self):
+        assert False, "Currently not implemented"
+
+    def right_operand(self):
+        return self.variable
+
+
+class ConditionInterval(Condition):
+    def __init__(self, operator, int_min, int_max):
+        super().__init__(operator)
+        assert operator.is_set()
+        self.min = int_min
+        self.max = int_max
+
+    def _key(self):
+        return super()._key() + (self.min, self.max)
+
+    def filtering(self, values):
+        if self.operator == IN:
+            return (v for v in values if self.min <= v <= self.max)
+        if self.operator == NOTIN:
+            return (v for v in values if v < self.min or self.max < v)
+        assert False
+
+    def str_tuple(self):
+        if self.operator == IN:
+            return self.right_operand()
+        if self.operator == NOTIN:
+            return TypeConditionOperator.to_utf(NOTIN) + self.right_operand()
+        assert False
+
+    def right_operand(self):
+        return str(self.min) + ".." + str(self.max)
+
+
+class ConditionSet(Condition):
+    def __init__(self, operator, t):
+        super().__init__(operator)
+        assert operator.is_set()
+        self.t = t
+
+    def _key(self):
+        return super()._key() + tuple(sorted(self.t))
+
+    def filtering(self, values):
+        if self.operator == IN:
+            return (v for v in values if v in self.t)
+        if self.operator == NOTIN:
+            return (v for v in values if v not in self.t)
+        assert False
+
+    def str_tuple(self):
+        if self.operator == IN:
+            return self.right_operand()
+        if self.operator == NOTIN:
+            return TypeConditionOperator.to_utf(NOTIN) + self.right_operand()
+        assert False
+
+    def right_operand(self):
+        # the values in increasing order (as for domains), so that the written set does not depend on the iteration order of a Python set
+        return "{" + ",".join(str(v) for v in sorted(self.t)) + "}"
+
+    def __repr__(self):
+        return self.str_tuple()
+
+
+class ConditionParameter(Condition):
+    def __init__(self, operator, parameter):
+        super().__init__(operator)
+        assert isinstance(parameter, main.constraints.Parameter)
+        self.parameter = parameter
+
+    def concretize_with(self, limit):
+        return Condition.build_condition((self.operator, limit))
+
+    def _key(self):
+        return super()._key() + (self.parameter,)
+
+    def filtering(self, values):
+        assert False, "Not meaningful; should not be called"
+
+    def str_tuple(self):
+        assert False, "Not meaningful; should not be called"
+
+    def right_operand(self):
+        return self.parameter
+
+
+class ConditionNode(Condition): # used for tables
+    def __init__(self, operator, node):
+        super().__init__(operator)
+        self.node = node
+
+    def __hash__(self):
+        return hash(self._key())
+
+    def __eq__(self, other):
+        return self.node.eq__safe(other)
+
+    def _key(self):
+        return super()._key() + (self.node,)
+
+    def filtering(self, values):  # TODO not use it during the filtering
+        return {self}
+
+    def str_tuple(self):
+        return (TypeConditionOperator.to_utf(self.operator) if self.operator != EQ else "") + self.node.__str_hybrid__()
+
+    def right_operand(self):
+        return self.node
+
+    def evaluate(self, t, domains):  # used when converting hybrid tables to ordinary tables
+        if self.node.type is TypeNode.COL:
+            i = self.node.cnt
+            # assert t[i] is ANY or isinstance(t[i], int)
+            values = domains[i] if t[i] is ANY else [t[i]]
+            return [i], [(v, v) for v in values]  # v is evaluated as v
+        if self.node.type in (TypeNode.ADD, TypeNode.SUB):
+            sons = self.node.cnt
+            assert sons[0].type is TypeNode.COL and sons[1].type in (TypeNode.COL, TypeNode.INT)
+            i = sons[0].cnt
+            # assert t[i] is ANY or isinstance(t[i], int)
+            values0 = domains[i] if t[i] is ANY else [t[i]]
+            if sons[1].type == TypeNode.INT:
+                v1 = sons[1].cnt
+                return [i], [(v0, v0 + v1 if self.node.type is TypeNode.ADD else v0 - v1) for v0 in values0]
+            j = sons[1].cnt
+            # assert t[j] is ANY or isinstance(t[j], int)
+            values1 = domains[j] if t[j] is ANY else [t[j]]
+            return [i, j], [(v0, v1, v0 + v1 if self.node.type is TypeNode.ADD else v0 - v1) for v0 in values0 for v1 in values1]
+        assert False
+
+    def columns(self):  # the indexes of the columns referred to by the node (the same forms as in evaluate())
+        if self.node.type is TypeNode.COL:
+            return [self.node.cnt]
+        assert self.node.type in (TypeNode.ADD, TypeNode.SUB)
+        sons = self.node.cnt
+        assert sons[0].type is TypeNode.COL and sons[1].type in (TypeNode.COL, TypeNode.INT)
+        return [sons[0].cnt] + ([sons[1].cnt] if sons[1].type is TypeNode.COL else [])
+
+    def value(self, t):  # the value of the node for the tuple t, whose columns referred to by the node are integers
+        if self.node.type is TypeNode.COL:
+            return t[self.node.cnt]
+        sons = self.node.cnt
+        v0, v1 = t[sons[0].cnt], sons[1].cnt if sons[1].type is TypeNode.INT else t[sons[1].cnt]
+        return v0 + v1 if self.node.type is TypeNode.ADD else v0 - v1
+
+
+def _build_condition(operator, v):
+    if isinstance(v, int):
+        return ConditionValue(operator, v)
+    if isinstance(v, Variable):
+        return ConditionVariable(operator, v)
+    if isinstance(v, Node):
+        # {eq|lt|le|ge|gt|ne}{var|integer}{+|-}{var|integer}
+        return ConditionNode(operator, v)
+    assert False, "The right argument following " + operator + " must be an integer, a variable or a node."
+
+
+def lt(v):
+    """
+    Builds an object Condition whose operator is lt (strictly less than), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=lt(10) for Knapsack), or used in hybrid tables (e.g., lt(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={lt(5): b[0] == 1, ge(5): b[1] == 1}))
+    """
+    return _build_condition(LT, v)
+
+
+def le(v):
+    """
+    Builds an object Condition whose operator is le (less than or equal), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=le(10) for Knapsack), or used in hybrid tables (e.g., le(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={le(4): b[0] == 1, gt(4): b[1] == 1}))
+    """
+    return _build_condition(LE, v)
+
+
+def ge(v):
+    """
+    Builds an object Condition whose operator is ge (greater than or equal), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=ge(10) for Knapsack), or used in hybrid tables (e.g., ge(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={ge(5): b[0] == 1, lt(5): b[1] == 1}))
+    """
+    return _build_condition(GE, v)
+
+
+def gt(v):
+    """
+    Builds an object Condition whose operator is gt (strictly greater than), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=gt(10) for Knapsack), or used in hybrid tables (e.g., gt(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={gt(4): b[0] == 1, le(4): b[1] == 1}))
+    """
+    return _build_condition(GT, v)
+
+
+def eq(v):
+    """
+    Builds an object Condition whose operator is eq (equal to), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=eq(10) for Knapsack), or used in hybrid tables (e.g., eq(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={eq(0): b[0] == 1, ne(0): b[1] == 1}))
+    """
+    return _build_condition(EQ, v)
+
+
+def ne(v):
+    """
+    Builds an object Condition whose operator is ne (not equal to), and whose right operand is the specified argument.
+    A condition can be given to some components (e.g., wcondition=ne(10) for Knapsack), or used in hybrid tables (e.g., ne(col(0))).
+
+    :param v: either an integer or the root node of an expression
+    :return: an object Condition
+    :example:
+        x = Var(range(10))
+        b = VarArray(size=2, dom={0, 1})
+        satisfy(Match(x, Cases={ne(0): b[0] == 1, eq(0): b[1] == 1}))
+    """
+    return _build_condition(NE, v)
+
+
+def _inside_outside(op, v):
+    v = v if len(v) > 1 else v[0]
+    if isinstance(v, range):
+        return ConditionInterval(op, v.start, v.stop - 1)
+    if isinstance(v, set):
+        return ConditionSet(op, v)
+    assert is_1d_list(v, int) or is_1d_tuple(v, int)
+    return ConditionSet(op, set(v))
+
+
+def inside(*v):
+    """
+    Builds an object Condition whose operator is 'in'
+    and the (right operand) is defined from the specified argument(s)
+
+    :param v: a range, a set, a tuple or a list of integers
+    :return: an object Condition
+    """
+    return _inside_outside(IN, v)
+
+
+def complement(*v):
+    """
+    Builds an object Condition whose operator is 'not in', and whose right operand is defined from the specified argument(s).
+    The term subject to the condition must take a value outside the specified values, as in wcondition=complement(range(3)) for Knapsack.
+
+    :param v: a range, a set, a tuple or a list of integers
+    :return: an object Condition
+    :example:
+        b = VarArray(size=4, dom={0, 1})
+        satisfy(Knapsack(b, weights=[3, 2, 2, 1], wcondition=complement(range(3)), profits=[4, 3, 2, 1]) >= 6)
+    """
+    return _inside_outside(NOTIN, v)
