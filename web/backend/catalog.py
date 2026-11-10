@@ -6,7 +6,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SNAPSHOT = json.loads((ROOT / "assets/data/course_details.json").read_text())
-DETAILS = SNAPSHOT["courses"]
+minor_path = ROOT / 'assets/data/minor_course_details.json'
+MINOR_SNAPSHOT = json.loads(minor_path.read_text()) if minor_path.exists() else {'courses': {}, 'memberships': {}}
+MINOR_SUPPLEMENT = set(MINOR_SNAPSHOT['courses'])
+DETAILS = {**SNAPSHOT['courses'], **MINOR_SNAPSHOT['courses']}
 CATEGORIES = SNAPSHOT["categories"]
 CATALOG = {code: {"module_code":code, "module_credit":m["moduleCredit"],
     "prereq_tree":m.get("prereqTree"), "semesters":[{"semester_number":s["semester"],
@@ -45,7 +48,9 @@ TITLES = {
 def course_info(code):
     module = CATALOG[code]
     details = DETAILS[code]
-    categories = details.get("plannerCategories", [])
+    minor_ids = MINOR_SNAPSHOT['memberships'].get(code, [])
+    from backend.minors import MINORS
+    categories = details.get("plannerCategories", []) + [MINORS[p]['tag'] for p in minor_ids]
     multi_semester = code.startswith("GEN") and code.endswith(("X", "Y"))
     graduate = bool(re.match(r"^[A-Z]+[5-9]", code))
     return {"code": code,
@@ -53,8 +58,17 @@ def course_info(code):
             "placeholder": bool(PLACEHOLDER.fullmatch(code)),
             "semesters": [s["semester_number"] for s in module.get("semesters", [])],
             "title": details.get("title", TITLES.get(code,code)), "categories":categories,
-            "source_urls":list(dict.fromkeys(details.get("categorySources", []))),
+            "source_urls":list(dict.fromkeys(details.get("categorySources", []) + [MINORS[p]['source_urls'][0] for p in minor_ids])),
+            "minor_programmes": minor_ids,
             "nusmods_url":f"https://nusmods.com/courses/{code}",
             "planner_eligible":not multi_semester and not graduate,
             "eligibility_note":"Year-long service learning: requires two-semester modelling; browse only." if multi_semester else
                 "Graduate-level course: not included in the undergraduate automatic pool." if graduate else ""}
+
+
+def math_entry_waived(code):
+    if code in {'CS1231S', 'MA1521', 'MA1522'}:
+        return True
+    tree = CATALOG[code].get('prereq_tree')
+    return isinstance(tree, dict) and set(tree) == {'or'} and bool(tree['or']) and all(
+        isinstance(c, str) and c.split(':')[0] in {'MA1301', 'MA1301X'} for c in tree['or'])

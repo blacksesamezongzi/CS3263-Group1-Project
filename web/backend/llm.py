@@ -7,15 +7,24 @@ import httpx
 from pydantic import ValidationError
 from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, course_info
 from backend.schemas import ConstraintCard, ParseRequest, ParseResult
+from backend.minors import MINORS, programmes
 
 BASE_URL = os.getenv("SOCLAAS_BASE_URL", "https://soclaas-api.comp.nus.edu.sg/v1").rstrip("/")
+TEMPERATURE = 0
+MAX_TOKENS = 3500
+
+
+def model_settings():
+    """One source of generation settings for planner and direct-model baseline."""
+    return {"model": os.getenv("SOCLAAS_MODEL") or None,
+            "temperature": TEMPERATURE, "max_tokens": MAX_TOKENS}
 
 
 class ModelError(Exception):
     pass
 
 
-async def available_models():
+async def available_model_details():
     key = os.getenv("SOCLAAS_API_KEY")
     if not key:
         raise ModelError("Set SOCLAAS_API_KEY on the backend to enable preference chat.")
@@ -23,9 +32,13 @@ async def available_models():
         async with httpx.AsyncClient(timeout=15) as client:
             response = await client.get(f"{BASE_URL}/models", headers={"Authorization": f"Bearer {key}"})
             response.raise_for_status()
-            return [m["id"] for m in response.json()["data"]]
+            return response.json()["data"]
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         raise ModelError("Cannot list SoCLaaS models. Check the backend key and gateway connectivity.") from exc
+
+
+async def available_models():
+    return [m['id'] for m in await available_model_details()]
 
 
 async def parse_preference(request: ParseRequest):
@@ -54,6 +67,13 @@ for no courses in certain semesters, focus_area for a selected focus area.
 There are no placeholder courses such as ID1, ID2, CD, GEC or GESS. For a category
 requirement use category_units with GEC, GEA, GESS, GEN (4 units) or ID_CD (12 units).
 ID/CD category membership is the official list in the context, not a code prefix.
+For a Mathematics/math/数学 minor use {type:'minor_programme',programme:'mathematics'}.
+For a Quantitative Finance/QF/量化金融 minor use programme:'quantitative_finance'.
+Minor rules are HARD commitments, placed in the Minors category. Do not approximate
+a minor by 20 arbitrary units or require every elective: its course groups, distinct
+units and sharing caps are enforced by the solver. Financial Mathematics is a
+different minor and is not supported. Do not declare a minor in EduRec or claim
+that enrolment or eligibility has been confirmed. Unknown minors need clarification.
 Courses marked browse_only cannot be added as course assignments; explain the reason.
 CS2101 and CS2103T are paired in the same semester and share the matching teaching
 group's tutorial/communication times. The default corequisites rule enforces pairing.
@@ -71,16 +91,16 @@ Keep reply concise. needs_clarification=true means cards must be empty.
                "categories":CATEGORIES,
                "browse_only":{c:course_info(c)['eligibility_note'] for c in CATALOG if not course_info(c)['planner_eligible']},
                "focus_areas": sorted(FOCUS_AREAS),
+               "minors": programmes(),
                "current_cards": [c.model_dump() for c in request.cards],
                "output_schema": ParseResult.model_json_schema()}
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(60, connect=10)) as client:
             response = await client.post(f"{BASE_URL}/chat/completions",
                 headers={"Authorization": f"Bearer {key}"},
-                json={"model": model, "messages": [
+                json={**model_settings(), "messages": [
                     {"role": "system", "content": system + "\n" + json.dumps(context, ensure_ascii=False)},
-                    {"role": "user", "content": request.message}],
-                    "temperature": 0, "max_tokens": 3500})
+                    {"role": "user", "content": request.message}]})
             response.raise_for_status()
             content = response.json()["choices"][0]["message"]["content"]
         content = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
@@ -91,6 +111,9 @@ Keep reply concise. needs_clarification=true means cards must be empty.
         for card in result.cards:
             data = card.model_dump()
             data.update(id="user_" + uuid4().hex[:12], source="user")
+            minor_rules = [r for r in card.rules if r.type == 'minor_programme']
+            if minor_rules:
+                data['source_urls'] = list(dict.fromkeys(url for r in minor_rules for url in MINORS[r.programme]['source_urls']))
             for rule in card.rules:
                 if getattr(rule, "semester", 1) > request.horizon or any(
                     s > request.horizon for s in getattr(rule, "semesters", [])

@@ -1,0 +1,79 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,microtype,amsmath,amssymb,booktabs,tabularx,array,enumitem,graphicx,tikz}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\definecolor{passgreen}{HTML}{25684D}
+\definecolor{failred}{HTML}{A74429}
+\definecolor{unknownamber}{HTML}{946D1F}
+\newcommand{\okzero}{\textcolor{passgreen}{0}}
+\newcommand{\badcount}[1]{\textcolor{failred}{\textbf{#1}}}
+\newcommand{\unknowncount}[1]{\textcolor{unknownamber}{\textbf{#1}}}
+\setcounter{topnumber}{3}
+\setcounter{totalnumber}{5}
+\renewcommand{\topfraction}{0.94}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.7}
+\usetikzlibrary{positioning,arrows.meta}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\emergencystretch}{3em}
+\renewenvironment{abstract}{\begin{center}\bfseries Abstract\end{center}}{}
+\setlist{nosep,leftmargin=*}
+\newcommand{\code}[1]{\nolinkurl{#1}}
+\newcommand{\term}[1]{\textbf{#1}}
+\title{Pathway: Natural-Language Course Planning with\protect\\Explicit Constraints and Timetable Verification}
+\author{CS3263 Group 1}
+\date{9 November 2026}
+\begin{document}
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+\centering
+\vspace*{1.5cm}
+{\Large CS3263 Foundations of Artificial Intelligence\par}
+\vspace{1.2cm}
+{\huge\bfseries Pathway\par}
+\vspace{0.4cm}
+{\Large Natural-Language Course Planning with\\Explicit Constraints and Timetable Verification\par}
+\vspace{1.8cm}
+\begin{tabular}{lll}
+\toprule
+Name & Matriculation number & Email\\
+\midrule
+Sun Jiaen & A0288438L & E1309958@u.nus.edu\\
+Shen Jingtao & A0287914N & E1297756@u.nus.edu\\
+Achar Pavithra & A0305963Y & E1375774@u.nus.edu\\
+\bottomrule
+\end{tabular}
+\vfill
+{\large Project report\par}
+9 November 2026
+\vspace{1cm}
+\begin{minipage}{0.9\textwidth}
+\textbf{Scope of this version.} The report describes the current implementation and the archived exploratory experiments. Human ratings have not yet been collected. It makes no claim that the system certifies complete NUS graduation eligibility. The title page and references are separate from the numbered report body.
+\end{minipage}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+\setcounter{page}{1}
+
+\input{body.tex}
+
+\clearpage
+\begin{thebibliography}{99}
+\bibitem{christou} I. T. Christou, E. Vagianou and G. Vardoulias. Planning Courses for Student Success at the American College of Greece. 2022. \url{https://arxiv.org/abs/2207.02659}.
+\bibitem{nl4opt} R. Ramamonjison et al. NL4Opt Competition: Formulating Optimization Problems Based on Their Natural Language Descriptions. \emph{PMLR}, 220:189--203, 2022 competition proceedings. \url{https://proceedings.mlr.press/v220/ramamonjison23a.html}.
+\bibitem{modulo} S. Kambhampati et al. Position: LLMs Can't Plan, But Can Help Planning in LLM-Modulo Frameworks. \emph{ICML}, PMLR 235:22895--22907, 2024. \url{https://proceedings.mlr.press/v235/kambhampati24a.html}.
+\bibitem{navgpt} G. Zhou, Y. Hong and Q. Wu. NavGPT: Explicit Reasoning in Vision-and-Language Navigation with Large Language Models. 2023. \url{https://arxiv.org/abs/2305.16986}.
+\bibitem{pycsp} C. Lecoutre and N. Szczepanski. PyCSP3: Modeling Combinatorial Constrained Problems in Python. 2020, revised 2026. \url{https://arxiv.org/abs/2009.00326}.
+\bibitem{ace} C. Lecoutre. ACE, a generic constraint solver. 2023, revised 2024. \url{https://arxiv.org/abs/2302.05405}.
+\bibitem{nusmods} NUSMods. API v2 and Planner. Accessed 9 November 2026. \url{https://api.nusmods.com/v2/}; \url{https://nusmods.com/planner}.
+\bibitem{nuscs} NUS Computing. Computer Science, Cohort AY2026/2027. Accessed 9 November 2026. \url{https://www.comp.nus.edu.sg/cug/per-cohort/cs/cs-26-27/}.
+\bibitem{nuscommon} NUS Computing. Common Curriculum requirements. Source URL retained in the frozen course snapshot. Accessed 9 November 2026. \url{https://www.comp.nus.edu.sg/cug/soc-22-23/}.
+\bibitem{nusge} National University of Singapore. General Education. Source URL retained in the frozen course snapshot. Accessed 9 November 2026. \url{https://www.nus.edu.sg/registrar/academic-information-policies/undergraduate-students/general-education/list-of-courses-approved-under-the-ge-pillars}.
+\bibitem{mathminor} NUS Department of Mathematics. Minor in Mathematics and AY2021/22-onwards requirements. Accessed 9 November 2026. \url{https://www.math.nus.edu.sg/ug/majmin/minors/mamin/}.
+\bibitem{qfminor} NUS Department of Mathematics. Minor in Quantitative Finance and AY2021/22-onwards requirements. Accessed 9 November 2026. \url{https://www.math.nus.edu.sg/ug/majmin/minors/qfmin/}.
+\bibitem{minorsharing} NUS Computing. Minor Programmes: double-counting policy. Accessed 9 November 2026. \url{https://www.comp.nus.edu.sg/programmes/ug/minorc/}.
+\bibitem{openai} OpenAI. Model documentation: GPT-6 Astra and GPT-6.1 Sol. Accessed 9 November 2026. \url{https://developers.openai.com/api/docs/models}.
+\end{thebibliography}
+\end{document}

@@ -52,7 +52,7 @@ def generate_plan(request):
                 "No feasible plan satisfies all active requirements. Remove or relax a card and try again."
                 if result["status"] == "infeasible" else "Search timed out without a feasible solution. Try relaxing constraints."}
     assignments = result.pop("assignments")
-    failures, unmet = check_plan(request, assignments, result.get('category_allocations'))
+    failures, unmet = check_plan(request, assignments, result.get('category_allocations'), result.get('minor_allocations'))
     if failures:
         raise SolverError("The independent checker rejected the solver result. No invalid plan was returned.")
     semesters = []
@@ -86,10 +86,15 @@ def generate_plan(request):
     if placeholders:
         warnings.append("Replace elective placeholders with real courses before finalising: " + ", ".join(placeholders))
     audit = academic_audit(assignments, math_qualified=request.math_qualified, start_year=request.start_year)
+    from backend.minors import audit_minors
+    minor_audit = audit_minors(request, assignments, result.get('minor_allocations'), result.get('category_allocations'))
+    if minor_audit['programmes']:
+        warnings.append('Selected minor course groups, distinct units, sharing caps and explicit course preclusions were checked. Declaration, exemptions and programme/grade-based CourseReg eligibility still require confirmation.')
     if audit['status'] != 'passed':
         warnings.append('Exploratory preview only: missing foundation courses or unmet prerequisites. Restore the academic requirements and regenerate. NUSMods export is disabled.')
     return {**result, "semesters": semesters, "total_units": total,
             'academic_audit': audit, 'exportable': audit['status'] == 'passed',
+            'minor_audit': minor_audit,
             'student_profile': {'math_qualified': request.math_qualified, 'start_year': request.start_year},
             'weekly_timetables':weekly_timetables,
             'unpublished_courses':unpublished,

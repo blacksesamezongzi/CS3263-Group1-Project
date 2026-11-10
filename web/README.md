@@ -107,6 +107,44 @@ Changing constraints or settings invalidates the previous export. Deleting a car
 
 Browser drafts are stored locally. An empty legacy draft restores defaults; a list explicitly emptied by the user remains empty until reset. The app does not share drafts or plans across browsers or computers.
 
+### SoCLaaS Interface
+
+Open **http://127.0.0.1:8000/chat**, or choose **Model chat** in the planner navigation. The standalone interface uses the existing backend `.env` key. Its initial model is `SOCLAAS_MODEL`, the same model used by Pathway.
+
+Click the **model name at the top** to search and select any model returned by the gateway for your key. Selection immediately changes the model ID sent with subsequent requests; it does not edit `.env` or change the planner's model. There is no fallback to Qwen if another model fails. Each reply and exported run records the selected model and the model ID reported by the gateway.
+
+- **LLM / VLM:** streamed conversations through `/v1/chat/completions`. VLM models accept PNG/JPEG/WebP/GIF uploads or pasted images using the **＋** button. Chat generation shares Pathway's temperature **0** and maximum output tokens **3500**.
+- **Embeddings:** text goes to `/v1/embeddings`; the returned vectors appear as JSON. This operates on the current input, without conversation history.
+- **Audio:** attach one supported audio file to call `/v1/audio/transcriptions`, for example with Whisper. This operates on the current audio file. Files are limited to 6 MB each and the current attachment total to 6 MB.
+
+Model capabilities and aliases come from the live `/v1/models` list rather than a hard-coded menu. **Refresh** reloads that list. The **Same model as Pathway** caption appears only when the selected model (or its declared alias) matches the planner model. API/model failures are displayed explicitly.
+
+Being listed indicates access and capabilities, not live backend health. A model can remain listed while returning **HTTP 503 / no healthy provider backends**. This means its SoCLaaS service is unavailable; wait and retry or explicitly choose another model. The interface distinguishes authentication, access, rate-limit and service errors, records the HTTP status in exported failed runs, and never silently switches models or retries an experiment.
+
+The interface supports multiple conversations, stop/retry, regeneration, response copying and JSON export. Conversations and attachments are saved in this browser under a separate key from the planner draft. The backend forwards them to SoCLaaS and does not save chat files to disk. Large attachments may exceed browser storage; export important runs. Partial/failed replies are excluded from future model context. Embedding/transcription output is also excluded from later chat context.
+
+The simplified UI has no settings panel or system-prompt editor. Requests contain your messages and attachments, with **no injected system prompt, catalogue, constraint cards, CSP, retrieval or automatic academic checks**. Older saved chats with a custom system prompt remain visible/exportable, but require a new chat before sending more messages, so old instructions cannot silently affect a run.
+
+The welcome page offers **14 Requirements and 2 Preferences prompt cards** drawn from the same `default_cards()` definition as the planner. Choose a card to append its text to the editable draft, or use **Add all defaults** to insert the full set. Expand **Show all requirements** to browse every card. Nothing is sent automatically: you can edit the draft before sending. The foundation prompt includes the complete required-course list. Cards are available for chat/VLM models; embeddings and transcription keep their own input modes. Start a **New chat** to return to the prompt library.
+
+### Optional minors: Mathematics and Quantitative Finance
+
+In **My study plan → Make room for a minor**, choose **Add minor** for Mathematics or Quantitative Finance, or **Use a prompt** to discuss it with the assistant. The manual constraint editor also supports **Complete a minor**. Selected programmes appear in a separate **Minors** tab as hard constraints; removing a card removes that programme from subsequent searches. Neither minor is enabled by default.
+
+The templates follow the Department of Mathematics' **AY2021/22-onwards** tables: [Mathematics](https://www.math.nus.edu.sg/ug/majmin/minors/mamin/) and [Quantitative Finance](https://www.math.nus.edu.sg/ug/majmin/minors/qfmin/). The CSP allocates distinct courses to the programme's groups, checks at least 20 units, at least 12 distinct units outside the CS-major/other-selected-minor pools, and a maximum of 8 units shared with other programmes. A course cannot be counted towards three programme requirements. Degree units are counted only once. The reference-year QF template uses Option B because MA2301 ceased being offered from AY2025/26.
+
+Generated plans show a separate minor summary with each group's courses, distinct/shared units and official source links. Both minors can be selected together. An independent checker verifies their allocations, and the JSON export endpoint checks the chosen minors again before download. Prerequisite order, explicit course preclusions, semester offerings, exams and weekly class selection participate in the search. The H2 Mathematics profile waives a course's entry condition when its only course prerequisites are MA1301/MA1301X; it never marks a university course as already completed.
+
+The **SoCLaaS Interface** also has a **Minors** prompt category with the same programme definitions. **Add all defaults** continues to add only the 16 base requirement/preference cards; choosing a minor is explicit. Prompt cards insert editable text and do not run the CSP.
+
+The original course snapshot is retained, with **57 additional real AY2026/27 courses** and supporting prerequisite options in `assets/data/minor_course_details.json` (338 courses in total). Search the catalogue by **Math minor** or **QF minor**. Maintainers can refresh this supplemental snapshot with `.venv/bin/python scripts/refresh_minor_catalogue.py`; restart the backend afterward. Inactive minor supplements do not expand the default solver's elective pool.
+
+Students must still declare a minor in EduRec before semester 5. The planner assumes NUS-earned course credits and does not perform declaration, assess personal exemptions/second-major eligibility, or implement every programme/grade-based CourseReg restriction. The primary-major pool is the app's prescribed CS foundation set; this remains a planning aid rather than a complete graduation certification.
+
+For each comparison, start a new chat, select Pathway's model, and supply the same task, course-data snapshot and student assumptions. **Export chat** saves the exact requests, responses, selected/returned model IDs, parameters, timestamps, response times, finish reason and token usage when supplied by the gateway. Switching models within a chat is allowed and is recorded per response; use separate chats when comparing independent runs. Export before regenerating if you want to keep both attempts.
+
+Assess raw-model and planner outputs with the same independent prerequisite, graduation and timetable criteria. A shared model does not by itself control prompt/context differences or the planner's solver/tool access. Temperature 0 does not guarantee identical repeated responses. Credentials remain on the backend and are never included in exported metadata.
+
 ## 6. Troubleshooting
 
 | Symptom | What to do |
@@ -141,6 +179,8 @@ web/
 Chat → SoCLaaS → validated constraint cards
 Cards → isolated degree solver ↔ complete weekly class-choice search
       → independent academic checks → semester plan → checked JSON export
+
+Direct-model chat (/chat) → same SoCLaaS model → raw streamed response
 ```
 
 The integration seam is **`backend/solver_adapter.py::solve_plan(request)`**. Its assignments map course codes to overall semesters: `1 = Y1S1`, `3 = Y2S1`, and `0 = not selected`. The web app currently uses its own bundled PyCSP3 adapter; it does **not** call the separate root-level `planner.run_foundation` baseline. Algorithm teammates can replace the adapter while keeping the versioned API. See [WEB_INTEGRATION.md](docs/WEB_INTEGRATION.md) and `/docs` for the exact schema and validation requirements.
@@ -148,7 +188,7 @@ The integration seam is **`backend/solver_adapter.py::solve_plan(request)`**. It
 ### Run tests from `web/`
 
 ```bash
-PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q tests/test_api.py
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 .venv/bin/python -m pytest -q tests/test_api.py tests/test_chat.py tests/test_minors.py
 npm ci
 npm test
 ```
@@ -170,7 +210,7 @@ For foreground development, stop the terminal process before updating and run `.
 
 ## 8. Data, rules and current limits
 
-- The default standard-CS target is 160 units. The bundled AY2026/27 catalogue has 281 real courses, including officially listed ID/CD and GE choices. Graduate-level and year-long GEN variants may be browse-only.
+- The default standard-CS target is 160 units. The bundled AY2026/27 catalogue has 338 real courses: the original 281-course CS/GE/ID/CD pool plus 57 minor/prerequisite courses. Graduate-level and year-long GEN variants may be browse-only.
 - Degree sources: [CS cohort requirements](https://www.comp.nus.edu.sg/cug/per-cohort/cs/cs-26-27/), [SoC Common Curriculum](https://www.comp.nus.edu.sg/cug/soc-22-23/), [approved GE list](https://www.nus.edu.sg/registrar/academic-information-policies/undergraduate-students/general-education/list-of-courses-approved-under-the-ge-pillars), and [NUSMods reference data](https://api.nusmods.com/v2/2026-2027/). Cards and course entries include relevant links.
 - Later academic years assume the reference offerings, exam dates and meetings repeat. CS2101 shares the CS2103T tutorial/communication package according to the project's confirmed mapping.
 - The student profile assumes satisfied English placement and, by default, H2/A-level Mathematics. The Mathematics checkbox changes the bridging-course route; it does not mark CS1231S or other university courses as already completed.

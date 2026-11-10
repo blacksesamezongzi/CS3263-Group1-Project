@@ -39,6 +39,12 @@ See **[web/README.md](web/README.md)** for OS requirements, complete setup, mode
 
 If the page shows `Failed to fetch`, check `./run.sh status`. If an old draft hides defaults, refresh with `Ctrl+F5` and use **Reset defaults**.
 
+## Latest web and report materials
+
+The web demo includes the SoCLaaS Interface at `/chat`, selectable gateway models, matching requirement/preference prompt cards, and optional Mathematics and Quantitative Finance minors. See [web/README.md](web/README.md) for setup and scope.
+
+The latest [report PDF](web/research/report/CS3263_Project_Report.pdf), [LaTeX source and figures](web/research/report/), [presentation plan](web/research/presentation/video_script.md), and rating templates are under [web/research/](web/research/README.md). The report was also updated and compiled in the existing Overleaf project. Raw experiment histories, API responses, logs, generated archives, private rating keys, course teaching materials and local credentials are excluded from this repository. Replaying archived experiment outputs requires the separately retained appendix.
+
 ## Existing algorithm baseline
 
 The root-level `planner/`, `CSP_Solver_Local/`, tests, snapshots and notebook are retained. Their original guide is preserved at **[docs/ALGORITHM_BASELINE.md](docs/ALGORITHM_BASELINE.md)**.

@@ -13,3 +13,13 @@ __pycache__/
 Solutions/
 .pytest_cache/
 .venv/
+
+# Local credentials, logs and generated deliverables
+.env
+.env.*
+!.env.example
+*.log
+.run/
+output/
+node_modules/
+course-materials/

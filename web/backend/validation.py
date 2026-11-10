@@ -1,10 +1,7 @@
 """Independent, ordinary-Python checks of the solver's course assignments."""
 from datetime import datetime, timedelta
 from itertools import combinations
-from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION
-
-MATH_ENTRY_COURSES = {'CS1231S', 'MA1521', 'MA1522'}
-
+from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION, math_entry_waived
 
 def prerequisite_description(tree):
     if tree is None:
@@ -26,13 +23,13 @@ def academic_audit(assignments, *, math_qualified=True, start_year=2026):
     """Always audit academic validity, even when a student deletes solver cards.
 
     Deleting a card still changes the CSP. It must not turn an invalid preview
-    into an exportable study plan. Mathematics eligibility only waives the entry
-    requirement of the three named courses; it never marks those courses taken.
+    into an exportable study plan. Mathematics eligibility waives recognised
+    bridging/entry qualifications; it never marks university courses taken.
     """
     selected = {code: s for code, s in assignments.items() if s > 0}
     violations = []
     for code, semester in selected.items():
-        if math_qualified and code in MATH_ENTRY_COURSES:
+        if math_qualified and math_entry_waived(code):
             continue
         tree = CATALOG[code].get('prereq_tree')
         if not prerequisite_met(tree, semester, assignments, start_year):
@@ -122,7 +119,7 @@ def rule_satisfied(rule, assignments, horizon, allocations=None, request=None):
     if t == "workload_target":
         return all(load == rule.units for load in loads.values() if load)
     if t == "prerequisites":
-        return all((request and request.math_qualified and c in {'CS1231S','MA1521','MA1522'}) or
+        return all((request and request.math_qualified and math_entry_waived(c)) or
                    prerequisite_met(CATALOG[c].get("prereq_tree"), s, assignments,request.start_year if request else 2026)
                    for c, s in selected.items())
     if t == "corequisites":
@@ -136,10 +133,12 @@ def rule_satisfied(rule, assignments, horizon, allocations=None, request=None):
     if t == "exam_clashes":
         return not any(a in selected and b in selected and selected[a] == selected[b]
                        and (selected[a] - 1) % 2 + 1 == sem for a, b, sem in exam_pairs())
+    if t == 'minor_programme':
+        return True  # Checked jointly with explicit minor allocations below.
     raise ValueError("Unimplemented rule: " + t)
 
 
-def check_plan(request, assignments, allocations=None):
+def check_plan(request, assignments, allocations=None, minor_allocations=None):
     hard_failures, unmet_preferences = [], []
     if allocations is not None:
         allocated = [c for group in allocations.values() for c in group]
@@ -148,4 +147,8 @@ def check_plan(request, assignments, allocations=None):
     for card in request.cards:
         if not all(rule_satisfied(r, assignments, request.horizon, allocations,request) for r in card.rules):
             (hard_failures if card.strength == "hard" else unmet_preferences).append({"id": card.id, "title": card.title})
+    from backend.minors import audit_minors
+    minor_audit = audit_minors(request, assignments, minor_allocations, allocations)
+    if minor_audit['status'] != 'passed':
+        hard_failures.append({'id': 'minor-audit', 'title': '; '.join(minor_audit['violations'])})
     return hard_failures, unmet_preferences

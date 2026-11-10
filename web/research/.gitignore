@@ -1,0 +1,9 @@
+# Internal harness event logs are not part of the research appendix.
+experiments/run-*/codex/
+
+# Keep the method key away from teammates during independent scoring.
+human-evaluation/PRIVATE_method_key_DO_NOT_SHARE.json
+
+# Raw experiment histories and generated per-run records stay local.
+experiments/run-*/
+human-evaluation/availability.json

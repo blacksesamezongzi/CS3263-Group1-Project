@@ -1,0 +1,37 @@
+// Screenshots of the running production UI in an isolated browser profile.
+// The degree view replays an actual archived solver response, not invented UI data.
+import fs from 'node:fs/promises';
+import {createRequire} from 'node:module';
+const require=createRequire('/tmp/cs3263-report-browser/package.json');
+const {chromium}=require('playwright-core');
+const out=new URL('./figures/',import.meta.url).pathname;
+const root=new URL('../../',import.meta.url).pathname;
+const browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
+const context=await browser.newContext({viewport:{width:1180,height:1000},deviceScaleFactor:2,reducedMotion:'reduce'});
+const page=await context.newPage();
+await page.goto('http://127.0.0.1:8000/',{waitUntil:'networkidle'});
+await page.waitForFunction(()=>document.querySelector('#constraint-count')?.textContent==='16');
+await page.evaluate(()=>document.fonts.ready);
+const bounds=await page.locator('#workspace').boundingBox();
+const lastCard=await page.locator('[data-card="coreqs"]').boundingBox();
+await page.screenshot({path:out+'planner_workspace.png',clip:{x:Math.floor(bounds.x),y:Math.floor(bounds.y),width:Math.floor(bounds.width),height:Math.ceil(lastCard.y+lastCard.height-bounds.y)+12}});
+await page.screenshot({path:out+'planner_overview.png',fullPage:false});
+const plan=JSON.parse(await fs.readFile(root+'research/experiments/run-2026-11-09/csp/base.json','utf8'));
+await page.route('**/api/plans',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(plan)}));
+await page.locator('#generate').click();
+await page.waitForFunction(()=>document.querySelector('#plan-caption')?.textContent.includes('160 units'));
+await page.locator('#plan-content').scrollIntoViewIfNeeded();
+const planBox=await page.locator('#plan-content').boundingBox();
+await page.screenshot({path:out+'degree_plan.png',clip:{x:Math.floor(planBox.x),y:Math.max(0,Math.floor(planBox.y)),width:Math.floor(planBox.width),height:570}});
+await page.locator('[data-timetable="1"]').click();
+await page.waitForFunction(()=>document.querySelector('#weekly-content')?.querySelector('.timetable,.week-grid,.timetable-grid') || document.querySelector('#weekly-status')?.textContent.includes('clash-free'));
+await page.locator('.weekly-toolbar').scrollIntoViewIfNeeded();
+await page.screenshot({path:out+'weekly_timetable.png',fullPage:false});
+const chat=await context.newPage();
+await chat.setViewportSize({width:1180,height:760});
+await chat.goto('http://127.0.0.1:8000/chat',{waitUntil:'networkidle'});
+await chat.waitForFunction(()=>document.querySelector('#prompt-hard-count')?.textContent==='14');
+await chat.evaluate(()=>document.fonts.ready);
+await chat.screenshot({path:out+'soclaas_interface.png',fullPage:false});
+await fs.writeFile(out+'screenshot_provenance.json',JSON.stringify({captured_at:new Date().toISOString(),base_url:'http://127.0.0.1:8000',planner_viewport:{width:1180,height:1000},chat_viewport:{width:1180,height:760},device_scale_factor:2,isolated_profile:true,degree_response:'research/experiments/run-2026-11-09/csp/base.json',degree_response_replay:true,synthetic_messages:false,notes:'Actual production DOM and styles; crops show selected regions. No personal browser state or API keys included.'},null,2));
+await browser.close();

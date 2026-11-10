@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-11-09T10:13:38.666Z",
+  "base_url": "http://127.0.0.1:8000",
+  "planner_viewport": {
+    "width": 1180,
+    "height": 1000
+  },
+  "chat_viewport": {
+    "width": 1180,
+    "height": 760
+  },
+  "device_scale_factor": 2,
+  "isolated_profile": true,
+  "degree_response": "research/experiments/run-2026-11-09/csp/base.json",
+  "degree_response_replay": true,
+  "synthetic_messages": false,
+  "notes": "Actual production DOM and styles; crops show selected regions. No personal browser state or API keys included."
+}
