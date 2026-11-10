@@ -5,7 +5,7 @@ replace solve_plan(request) while preserving the HTTP and UI contract.
 """
 from pycsp3 import Var, VarArray, Sum, satisfy, minimize, solve, values, SAT, OPTIMUM
 from pycsp3 import abs as cp_abs
-from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION, course_info, math_entry_waived
+from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION, MATH_BRIDGING_COURSES, course_info, math_entry_waived
 from backend.minors import MINORS, group_codes, eligible_codes, selected_minors, allowed_courses, minor_preclusions
 from backend.validation import exam_pairs, cohort_applies
 from backend.attendance import semester_selection, fixed_conflicts, conflict_core, lesson_groups
@@ -33,6 +33,10 @@ def solve_plan(request):
     allocations = VarArray(size=len(codes), dom=allocation_domain)
     satisfy([(allocations[i]==0) | (assignment[i]>0) for i in range(len(codes))])
     satisfy([assignment[i]==0 for i,c in enumerate(codes) if not course_info(c)['planner_eligible']])
+    # H2 qualification both waives entry conditions and excludes bridging courses.
+    # Keep their variables so conflicting explicit pins are infeasible, not errors.
+    if request.math_qualified:
+        satisfy([assignment[i] == 0 for i, c in enumerate(codes) if c in MATH_BRIDGING_COURSES])
     minor_variables = {}
     programmes = selected_minors(request)
     for programme in programmes:

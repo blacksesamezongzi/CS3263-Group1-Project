@@ -109,7 +109,7 @@ function renderAcademicAudit() {
   const audit=state.plan?.academic_audit,container=$('#academic-audit');
   container.hidden=!audit || audit.status==='passed';
   if(container.hidden){container.innerHTML='';return;}
-  container.innerHTML=`<div class="notice error"><strong>Academic checks failed — preview only. Export is disabled.</strong>${audit.missing_foundation_courses?.length?`<p>Missing foundation courses: ${audit.missing_foundation_courses.map(escapeHTML).join(', ')}.</p>`:''}${audit.prerequisite_violations?.length?`<ul>${audit.prerequisite_violations.map(v=>`<li><strong>${escapeHTML(v.course)} · semester ${v.semester}</strong>: complete ${escapeHTML(v.requirement)} in earlier semesters.</li>`).join('')}</ul>`:''}<button class="secondary" id="restore-plan-academic">Restore core & prerequisites</button></div>`;
+  container.innerHTML=`<div class="notice error"><strong>Academic checks failed — preview only. Export is disabled.</strong>${audit.missing_foundation_courses?.length?`<p>Missing foundation courses: ${audit.missing_foundation_courses.map(escapeHTML).join(', ')}.</p>`:''}${audit.prerequisite_violations?.length?`<ul>${audit.prerequisite_violations.map(v=>`<li><strong>${escapeHTML(v.course)} · semester ${v.semester}</strong>: complete ${escapeHTML(v.requirement)} in earlier semesters.</li>`).join('')}</ul>`:''}${audit.profile_violations?.length?`<ul>${audit.profile_violations.map(v=>`<li><strong>${escapeHTML(v.course)} · semester ${v.semester}</strong>: ${escapeHTML(v.requirement)}</li>`).join('')}</ul>`:''}<button class="secondary" id="restore-plan-academic">Restore core & prerequisites</button></div>`;
 }
 function renderCards({positions=cardPositions(),newIds=[]}={}) {
   newIds.forEach(id=>freshCards.set(id,Date.now()+30000));
@@ -211,8 +211,10 @@ async function generatePlan() {
 }
 function courseMarkup(course) {
   const color = course.code.startsWith('CS') ? 'cs' : /^(MA|ST)/.test(course.code) ? 'math' : '';
-  const invalid=state.plan?.academic_audit?.prerequisite_violations?.some(v=>v.course===course.code);
-  return `<div class="course ${color} ${invalid?'prereq-invalid':''}"><div><span class="code">${escapeHTML(course.code)}</span><span class="course-title">${escapeHTML(course.title)}</span>${invalid?'<span class="prereq-error">Prerequisites not completed first</span>':''}</div><span class="course-units">${course.units} units</span></div>`;
+  const audit=state.plan?.academic_audit;
+  const invalid=audit?.prerequisite_violations?.some(v=>v.course===course.code);
+  const profileInvalid=audit?.profile_violations?.some(v=>v.course===course.code);
+  return `<div class="course ${color} ${invalid||profileInvalid?'prereq-invalid':''}"><div><span class="code">${escapeHTML(course.code)}</span><span class="course-title">${escapeHTML(course.title)}</span>${invalid?'<span class="prereq-error">Prerequisites not completed first</span>':profileInvalid?'<span class="prereq-error">Not eligible under your student profile</span>':''}</div><span class="course-units">${course.units} units</span></div>`;
 }
 function renderPlan() {
   renderMinorProgress();

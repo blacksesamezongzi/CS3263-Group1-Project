@@ -82,6 +82,7 @@ def test_real_default_plan_with_user_instruction_passes_independent_checker():
     assert all(t['status']=='feasible' for t in result['weekly_timetables'].values())
     assert any(c["code"] == "CS2102" for c in result["semesters"][2]["courses"])
     assignments = {c["code"]: s["number"] for s in result["semesters"] for c in s["courses"]}
+    assert not {'MA1301', 'MA1301X'} & assignments.keys()
     assert check_plan(request, assignments,result['category_allocations'])[0] == []
     native = result["nusmods_planner"]
     assert native["minYear"] == "2026-2027"
@@ -97,6 +98,61 @@ def test_real_default_plan_with_user_instruction_passes_independent_checker():
         'horizon':request.horizon,'start_year':request.start_year,'math_qualified':request.math_qualified})
     assert exported.status_code==200,exported.text
     assert exported.json()==native
+    # Older/browser-modified plans must not bypass the profile restriction.
+    for bridge in ('MA1301', 'MA1301X'):
+        blocked = client.post('/api/exports/nusmods', json={
+            'assignments': {**assignments, bridge: 10}, 'horizon': 10,
+            'start_year': request.start_year, 'math_qualified': True})
+        assert blocked.status_code == 409
+        assert blocked.json()['detail']['academic_audit']['profile_violations'][0]['course'] == bridge
+
+
+@pytest.mark.parametrize('bridge', ['MA1301', 'MA1301X'])
+def test_h2_profile_excludes_bridging_even_with_explicit_pins_but_allows_unqualified_route(bridge):
+    cards = [card('bridge-route', [
+        {'type': 'course_in_semester', 'course': bridge, 'semester': 1},
+        {'type': 'course_in_semester', 'course': 'CS1231S', 'semester': 2},
+        {'type': 'course_in_semester', 'course': 'MA1521', 'semester': 2},
+        {'type': 'course_in_semester', 'course': 'MA1522', 'semester': 2},
+        {'type': 'exclude_courses', 'courses': ['MA1301X' if bridge == 'MA1301' else 'MA1301']},
+        {'type': 'prerequisites'}])]
+    qualified = PlanRequest(cards=cards, horizon=2, math_qualified=True)
+    assert generate_plan(qualified)['status'] == 'infeasible'
+    # The same cards remain meaningful for a student without H2 qualification.
+    unqualified = qualified.model_copy(update={'math_qualified': False})
+    result = generate_plan(unqualified)
+    assert result['status'] == 'feasible', result
+    assignments = {c['code']: s['number'] for s in result['semesters'] for c in s['courses']}
+    assert assignments[bridge] == 1 and assignments['CS1231S'] == 2
+    assert assignments['MA1521'] == assignments['MA1522'] == 2
+    assert check_plan(unqualified, assignments)[0] == []
+    # Profile eligibility is enforced independently of removable rule cards.
+    empty = PlanRequest(cards=[], math_qualified=True)
+    assert check_plan(empty, assignments)[0][0]['id'] == 'math-profile'
+    assert academic_audit(assignments, math_qualified=True)['profile_violations'][0]['course'] == bridge
+    assert academic_audit(assignments, math_qualified=False)['profile_violations'] == []
+    # Pinning the foundation courses alongside the bridge is not completion first.
+    same_semester = unqualified.model_dump()
+    same_semester['cards'][0]['rules'][0]['semester'] = 2
+    assert generate_plan(PlanRequest(**same_semester))['status'] == 'infeasible'
+
+
+def test_without_h2_all_recognised_entry_courses_require_an_earlier_bridge():
+    from backend.catalog import CATALOG, MATH_BRIDGING_COURSES, math_entry_waived
+    from backend.validation import rule_satisfied
+    prerequisite = card('entry', [{'type': 'prerequisites'}]).rules[0]
+    request = PlanRequest(cards=[], math_qualified=False)
+    courses = [c for c in CATALOG if math_entry_waived(c)]
+    assert {'CS1231S', 'MA1521', 'MA1522', 'QF1100'} <= set(courses)
+    for course in courses:
+        for bridge in MATH_BRIDGING_COURSES:
+            for bridge_semester in (0, 2, 3):
+                assignments = {course: 2, bridge: bridge_semester}
+                assert not rule_satisfied(prerequisite, assignments, 4, request=request), (course, assignments)
+                assert course in {v['course'] for v in academic_audit(assignments, math_qualified=False)['prerequisite_violations']}
+            assignments = {course: 2, bridge: 1}
+            assert rule_satisfied(prerequisite, assignments, 4, request=request), (course, bridge)
+            assert not academic_audit(assignments, math_qualified=False)['prerequisite_violations']
 
 
 def test_academic_audit_catches_the_reported_cs1231s_and_advanced_course_case():

@@ -109,7 +109,7 @@ async def plans(request: PlanRequest):
 async def export_nusmods(request: ExportRequest):
     audit = academic_audit(request.assignments, math_qualified=request.math_qualified, start_year=request.start_year)
     if audit['status'] != 'passed':
-        raise HTTPException(409, {'message': 'Export blocked: foundation courses or prerequisites are not satisfied.',
+        raise HTTPException(409, {'message': 'Export blocked: foundation, prerequisite or student-profile requirements are not satisfied.',
                                  'academic_audit': audit})
     minor_request = PlanRequest(cards=[{'id': 'minor_' + p, 'title': p, 'rules': [{'type': 'minor_programme', 'programme': p}]} for p in request.minors],
                                 horizon=request.horizon, start_year=request.start_year)

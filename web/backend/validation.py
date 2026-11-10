@@ -1,7 +1,14 @@
 """Independent, ordinary-Python checks of the solver's course assignments."""
 from datetime import datetime, timedelta
 from itertools import combinations
-from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION, math_entry_waived
+from backend.catalog import CATALOG, FOCUS_AREAS, CATEGORIES, FOUNDATION, MATH_BRIDGING_COURSES, math_entry_waived
+
+
+def profile_violations(assignments, *, math_qualified):
+    return [{'course': code, 'semester': semester,
+             'requirement': 'H2 Mathematics qualification excludes MA1301 and MA1301X bridging courses.'}
+            for code, semester in sorted(assignments.items())
+            if math_qualified and semester > 0 and code in MATH_BRIDGING_COURSES]
 
 def prerequisite_description(tree):
     if tree is None:
@@ -37,10 +44,12 @@ def academic_audit(assignments, *, math_qualified=True, start_year=2026):
                                'requirement': prerequisite_description(tree),
                                'prerequisite_tree': tree})
     missing = sorted(set(FOUNDATION) - selected.keys())
-    passed = not missing and not violations
+    profile_errors = profile_violations(assignments, math_qualified=math_qualified)
+    passed = not missing and not violations and not profile_errors
     return {'status': 'passed' if passed else 'failed',
-            'scope': 'Foundation courses and course prerequisite order; not a complete graduation audit.',
-            'missing_foundation_courses': missing, 'prerequisite_violations': violations}
+            'scope': 'Foundation courses, course prerequisite order and H2 Mathematics bridging eligibility; not a complete graduation audit.',
+            'missing_foundation_courses': missing, 'prerequisite_violations': violations,
+            'profile_violations': profile_errors}
 
 
 def cohort_applies(condition, start_year):
@@ -140,6 +149,8 @@ def rule_satisfied(rule, assignments, horizon, allocations=None, request=None):
 
 def check_plan(request, assignments, allocations=None, minor_allocations=None):
     hard_failures, unmet_preferences = [], []
+    if profile_violations(assignments, math_qualified=request.math_qualified):
+        hard_failures.append({'id': 'math-profile', 'title': 'H2 Mathematics qualification excludes MA1301 and MA1301X.'})
     if allocations is not None:
         allocated = [c for group in allocations.values() for c in group]
         if len(allocated)!=len(set(allocated)):

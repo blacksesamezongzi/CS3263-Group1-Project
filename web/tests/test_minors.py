@@ -64,7 +64,7 @@ def test_real_csp_supports_two_minors_with_prerequisites_and_clash_free_weeks(tw
     for p in result['minor_audit']['programmes']:
         assert p['units'] >= 20 and p['distinct_units'] >= 12 and p['shared_units'] <= 8
     assert assignments['QF1100'] < assignments['QF2104'] < assignments['QF3101']
-    assert 'MA1301' not in assignments  # H2 Maths eligibility applies to QF1100.
+    assert not {'MA1301', 'MA1301X'} & assignments.keys()  # H2 profile also excludes bridging electives.
     assert all(p in result['minor_allocations'] for p in MINORS)
 
 

@@ -66,9 +66,12 @@ def course_info(code):
                 "Graduate-level course: not included in the undergraduate automatic pool." if graduate else ""}
 
 
+MATH_BRIDGING_COURSES = frozenset({'MA1301', 'MA1301X'})
+
+
 def math_entry_waived(code):
     if code in {'CS1231S', 'MA1521', 'MA1522'}:
         return True
     tree = CATALOG[code].get('prereq_tree')
     return isinstance(tree, dict) and set(tree) == {'or'} and bool(tree['or']) and all(
-        isinstance(c, str) and c.split(':')[0] in {'MA1301', 'MA1301X'} for c in tree['or'])
+        isinstance(c, str) and c.split(':')[0] in MATH_BRIDGING_COURSES for c in tree['or'])

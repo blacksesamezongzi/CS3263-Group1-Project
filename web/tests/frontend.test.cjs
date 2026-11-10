@@ -223,6 +223,20 @@ test('invalid academic previews list the unmet prerequisites and cannot open exp
   }finally{t.dom.window.close();}
 });
 
+test('student profile audit explains bridging-course exclusions and blocks export',async()=>{
+  const invalid=structuredClone(plan);invalid.exportable=false;delete invalid.nusmods_planner;
+  invalid.semesters[2].courses=[{code:'MA1301X',title:'Introductory Mathematics',units:4}];
+  invalid.academic_audit={status:'failed',missing_foundation_courses:[],prerequisite_violations:[],
+    profile_violations:[{course:'MA1301X',semester:3,requirement:'H2 Mathematics qualification excludes MA1301 and MA1301X bridging courses.'}]};
+  const t=await setup(path=>path==='/api/plans'?invalid:undefined);
+  try{
+    t.click('#generate');await until(()=>!t.document.querySelector('#generate').disabled);
+    assert.equal(t.document.querySelector('#export').disabled,true);
+    assert.match(t.document.querySelector('#academic-audit').textContent,/H2 Mathematics qualification excludes MA1301 and MA1301X/);
+    assert.match(t.document.querySelector('.course.prereq-invalid').textContent,/Not eligible under your student profile/);
+  }finally{t.dom.window.close();}
+});
+
 test('version 2 drafts recover absent prerequisite and core cards once without losing user preferences',async()=>{
   const fullConfig=structuredClone(config);
   fullConfig.foundation=['CS1231S'];
