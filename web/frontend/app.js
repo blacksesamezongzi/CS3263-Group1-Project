@@ -7,6 +7,7 @@ const DRAFT_VERSION = 3;
 const state = {config:null, cards:[], messages:[], filter:'hard', plan:null, stale:false, busy:false, chatting:false, view:'degree', timetable:null, revision:0, timetableToken:0, editing:null, intentionallyEmpty:false};
 let toastTimer;
 const freshCards=new Map();
+const constraintCategory = card => card.rules.some(r=>r.type==='minor_programme')?'minor':card.strength;
 const prefersReducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? true;
 function animateElement(element, frames, options={}) {
   if (!element?.animate || prefersReducedMotion()) return null;
@@ -21,8 +22,8 @@ function flyConstraints(cards) {
   const source=$$('#messages .message.assistant:not(#thinking)').at(-1) || $('.chat-heading');
   const start=source.getBoundingClientRect();
   cards.forEach((card,index)=>{
-    highlightTab(card.strength);
-    const target=card.strength===state.filter ? $(`[data-card="${card.id}"]`) : $(`#tab-${card.strength}`);
+    const category=constraintCategory(card);highlightTab(category);
+    const target=category===state.filter ? $(`[data-card="${card.id}"]`) : $(`#tab-${category}`);
     if (!target || prefersReducedMotion()) return;
     const end=target.getBoundingClientRect();
     const flight=document.createElement('div');flight.className=`constraint-flight ${card.strength}`;flight.setAttribute('aria-hidden','true');
@@ -48,6 +49,7 @@ function markChanged() {
   $('#export').disabled = !canExportPlan();
   if (state.stale) showPlanStatus('Your constraints have changed. Generate a new plan before exporting or loading a timetable.');
   save();
+  renderMinorOptions();renderMinorProgress();
 }
 async function api(path, data) {
   const response = await fetch(path, data === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)});
@@ -56,11 +58,12 @@ async function api(path, data) {
     const detail = body.detail;
     const error = new Error(Array.isArray(detail) ? detail.map(e => e.msg).join('; ') : typeof detail==='object' ? detail.message || `Request failed (${response.status})` : detail || `Request failed (${response.status})`);
     error.academicAudit=detail?.academic_audit;
+    error.minorAudit=detail?.minor_audit;
     throw error;
   }
   return body;
 }
-const cardIcons = {min_total_units:'◷', require_courses:'▤', exclude_courses:'⊖', prerequisites:'⇢', corequisites:'⇄', semester_availability:'▦', exam_clashes:'◴', semester_units:'◫', focus_area:'◎', finish_by:'⚑', workload_target:'≈', course_in_semester:'▦', blocked_semesters:'⊘',category_units:'◇',weekly_feasibility:'▦'};
+const cardIcons = {min_total_units:'◷', require_courses:'▤', exclude_courses:'⊖', prerequisites:'⇢', corequisites:'⇄', semester_availability:'▦', exam_clashes:'◴', semester_units:'◫', focus_area:'◎', finish_by:'⚑', workload_target:'≈', course_in_semester:'▦', blocked_semesters:'⊘',category_units:'◇',weekly_feasibility:'▦',minor_programme:'◇'};
 function academicSolverCoverage() {
   const rules=state.cards.filter(c=>c.strength==='hard').flatMap(c=>c.rules);
   const required=new Set(rules.filter(r=>r.type==='require_courses').flatMap(r=>r.courses));
@@ -75,7 +78,32 @@ function restoreAcademicCards() {
   toast('Foundation and prerequisite rules restored. Generate a new plan.');
 }
 function canExportPlan() {
-  return Boolean(state.plan && !state.stale && !state.busy && state.plan.exportable===true && state.plan.academic_audit?.status==='passed');
+  return Boolean(state.plan && !state.stale && !state.busy && state.plan.exportable===true && state.plan.academic_audit?.status==='passed' &&
+    (!state.cards.some(c=>constraintCategory(c)==='minor') || state.plan.minor_audit?.status==='passed'));
+}
+function renderMinorOptions() {
+  const programmes=state.config?.minors || [],host=$('#minor-pathways');
+  host.hidden=!programmes.length;
+  $('#minor-options').innerHTML=programmes.map(m=>{
+    const selected=state.cards.some(c=>c.rules.some(r=>r.type==='minor_programme'&&r.programme===m.id));
+    return `<article class="minor-option"><span class="minor-option-icon" aria-hidden="true">${m.id==='mathematics'?'∑':'↗'}</span><div><h4>${escapeHTML(m.name)}</h4><p>${escapeHTML(m.summary)}</p><a href="${escapeHTML(m.source_urls[0])}" target="_blank" rel="noopener">Official requirements ↗</a></div><div class="minor-option-actions"><button class="secondary" data-add-minor="${escapeHTML(m.id)}" ${selected||state.busy?'disabled':''}>${selected?'✓ Added to constraints':'Add minor ＋'}</button><button class="text-button" data-minor-prompt="${escapeHTML(m.id)}" ${state.busy?'disabled':''}>Use a prompt ↗</button></div></article>`;
+  }).join('');
+}
+function renderMinorProgress() {
+  const host=$('#minor-progress'),audit=state.plan?.minor_audit;
+  host.hidden=!audit?.programmes?.length;
+  if(host.hidden){host.innerHTML='';return;}
+  host.innerHTML=`${state.stale?'<p class="minor-stale">Constraints changed. Regenerate to update minor checks.</p>':''}`+audit.programmes.map(m=>`<details class="minor-audit ${m.status==='passed'?'passed':'failed'}"><summary><strong>${escapeHTML(m.name)} minor</strong><span>${state.stale?'Previous plan':m.status==='passed'?'✓ Template checks passed':'Needs changes'} · ${m.units} units</span></summary><p>${m.distinct_units} distinct units · ${m.shared_units} shared units (maximum 8)</p>${(m.groups||[]).map(g=>`<p><strong>${escapeHTML(g.name)}</strong> · ${g.units} units · ${g.courses.map(escapeHTML).join(', ')}</p>`).join('')}${m.violations?.length?`<ul>${m.violations.map(v=>`<li>${escapeHTML(v)}</li>`).join('')}</ul>`:''}<a href="${escapeHTML(m.source_urls[0])}" target="_blank" rel="noopener">Check the official requirements ↗</a></details>`).join('');
+}
+function addMinor(programme) {
+  const minor=state.config?.minors?.find(m=>m.id===programme);
+  if(!minor||state.busy)return;
+  if(state.cards.some(c=>c.rules.some(r=>r.type==='minor_programme'&&r.programme===programme))){state.filter='minor';renderCards();return;}
+  if(state.cards.length>=80){toast('Remove a card before adding a minor.');return;}
+  const card={id:'user_'+crypto.randomUUID().replaceAll('-','').slice(0,12),title:`Complete a Minor in ${minor.name}`,description:minor.summary,
+    strength:'hard',source:'user',rules:[{type:'minor_programme',programme}],source_urls:minor.source_urls};
+  state.cards.unshift(card);state.filter='minor';markChanged();renderCards({newIds:[card.id]});
+  $('#workspace').scrollIntoView({behavior:prefersReducedMotion()?'auto':'smooth'});toast(`${minor.name} minor added to your constraints.`);
 }
 function renderAcademicAudit() {
   const audit=state.plan?.academic_audit,container=$('#academic-audit');
@@ -86,13 +114,13 @@ function renderAcademicAudit() {
 function renderCards({positions=cardPositions(),newIds=[]}={}) {
   newIds.forEach(id=>freshCards.set(id,Date.now()+30000));
   newIds=state.cards.filter(c=>(freshCards.get(c.id)||0)>Date.now()).map(c=>c.id);
-  const hard = state.cards.filter(c => c.strength === 'hard').length;
-  $('#constraint-count').textContent = state.cards.length; $('#hard-count').textContent = hard; $('#soft-count').textContent = state.cards.length - hard;
+  $('#constraint-count').textContent = state.cards.length;
+  for(const category of ['hard','soft','minor'])$(`#${category}-count`).textContent=state.cards.filter(c=>constraintCategory(c)===category).length;
   $$('[data-filter]').forEach(button => {button.setAttribute('aria-selected',String(button.dataset.filter === state.filter)); button.tabIndex = button.dataset.filter === state.filter ? 0 : -1;});
   $('#constraint-list').setAttribute('aria-labelledby',`tab-${state.filter}`);
-  const cards = state.cards.filter(c => c.strength === state.filter);
+  const cards = state.cards.filter(c => constraintCategory(c) === state.filter);
   $('#constraint-list').innerHTML = cards.length ? cards.map(card => {
-    const editable = card.rules.length === 1 && ['min_total_units','course_in_semester','finish_by','semester_units','workload_target','focus_area','require_courses','exclude_courses','blocked_semesters'].includes(card.rules[0].type);
+    const editable = card.rules.length === 1 && ['min_total_units','course_in_semester','finish_by','semester_units','workload_target','focus_area','require_courses','exclude_courses','blocked_semesters','minor_programme'].includes(card.rules[0].type);
     const sources=(card.source_urls || []).filter(url=>{try{const u=new URL(url);return u.protocol==='https:' && (u.hostname==='nus.edu.sg'||u.hostname.endsWith('.nus.edu.sg')||['nusmods.com','api.nusmods.com'].includes(u.hostname));}catch{return false;}});
     return `<article class="constraint-card ${card.strength} ${newIds.includes(card.id)?'card-new':''}" data-card="${escapeHTML(card.id)}"><div class="card-top"><span class="card-icon" aria-hidden="true">${cardIcons[card.rules[0].type] || '◇'}</span></div>${editable ? `<button class="edit-card" data-edit="${escapeHTML(card.id)}" aria-label="Edit ${escapeHTML(card.title)}">Edit</button>` : ''}<button class="remove-card" data-remove="${escapeHTML(card.id)}" aria-label="Remove ${escapeHTML(card.title)}">×</button><h3>${escapeHTML(card.title)}</h3><p>${escapeHTML(card.description)}</p>${sources.length?`<div class="requirement-sources">${sources.map((url,i)=>`<a href="${escapeHTML(url)}" target="_blank" rel="noopener">${url.includes('api.nusmods')?'Course data':i?'More details':'Official requirement'} ↗</a>`).join('')}</div>`:''}<details><summary>${card.rules.length} solver rule${card.rules.length === 1 ? '' : 's'}</summary><pre>${escapeHTML(JSON.stringify(card.rules,null,2))}</pre></details></article>`;
   }).join('') : '<div class="empty-constraints">No constraints here yet.<br>Add one yourself or tell the assistant what matters.</div>';
@@ -127,7 +155,7 @@ async function sendPreference(event) {
       if (state.cards.length + result.cards.length > 80) throw new Error('The planner supports up to 80 cards. Remove a card before adding more.');
       const positions=cardPositions();
       state.cards=[...result.cards,...state.cards];
-      if(new Set(result.cards.map(c=>c.strength)).size===1)state.filter=result.cards[0].strength;
+      if(new Set(result.cards.map(constraintCategory)).size===1)state.filter=constraintCategory(result.cards[0]);
       markChanged();renderCards({positions,newIds:result.cards.map(c=>c.id)});
       appendMessage('assistant',result.reply,result.cards.length);
       flyConstraints(result.cards);
@@ -146,6 +174,7 @@ function setBusy(busy) {
   $('#send').disabled = busy || state.chatting;
   $('#reset').disabled = busy; $('#add-constraint').disabled = busy;
   $('#export').disabled = !canExportPlan();
+  renderMinorOptions();
 }
 async function generatePlan() {
   if (state.busy || state.chatting || !state.config) return;
@@ -156,7 +185,7 @@ async function generatePlan() {
     const result = await api('/api/plans',{schema_version:1,cards:state.cards,horizon:Number($('#horizon').value),start_year:Number($('#start-year').value),math_qualified:$('#math-qualified').checked,allow_unpublished:$('#allow-unpublished').checked});
     if (revision !== state.revision) {showPlanStatus('Settings changed during generation. Generate again to use the updated constraints.'); return;}
     state.plan = null; state.timetable = null; state.timetableToken++;
-    renderAcademicAudit();
+    renderAcademicAudit();renderMinorProgress();
     if (!['feasible','conditional'].includes(result.status)) {
       state.stale = false; $('#plan-content').innerHTML = '<div class="empty-plan"><h3>Let’s give your plan a little more room.</h3><p>Review conflicting requirements, relax a workload limit, or extend the search horizon.</p></div>';
       $('#plan-caption').textContent = 'No feasible course plan is available for these constraints.';
@@ -186,6 +215,7 @@ function courseMarkup(course) {
   return `<div class="course ${color} ${invalid?'prereq-invalid':''}"><div><span class="code">${escapeHTML(course.code)}</span><span class="course-title">${escapeHTML(course.title)}</span>${invalid?'<span class="prereq-error">Prerequisites not completed first</span>':''}</div><span class="course-units">${course.units} units</span></div>`;
 }
 function renderPlan() {
+  renderMinorProgress();
   if (!state.plan) return;
   $$('[data-view]').forEach(b => b.setAttribute('aria-pressed',String(b.dataset.view === state.view)));
   if (state.view === 'weekly') {renderWeeklyShell();return;}
@@ -242,6 +272,7 @@ function showRuleFields(rule=null) {
     exclude_courses:`<label>Course codes, separated by commas<input id="field-courses" placeholder="CS3244" value="${escapeHTML((rule?.courses || []).join(', '))}" required></label>`,
     blocked_semesters:`<label>Overall semesters, separated by commas<input id="field-semesters" placeholder="5, 6" value="${escapeHTML((rule?.semesters || []).join(', '))}" required></label>`,
     focus_area:`<label>Focus area<select id="field-area">${state.config.focus_areas.map(area=>`<option ${area===rule?.area?'selected':''}>${escapeHTML(area)}</option>`).join('')}</select></label>`,
+    minor_programme:`<label>Minor programme<select id="field-minor">${(state.config.minors||[]).map(m=>`<option value="${escapeHTML(m.id)}" ${m.id===rule?.programme?'selected':''}>${escapeHTML(m.name)}</option>`).join('')}</select></label><p>Checks grouped course choices, 20+ units, distinct units and sharing caps for AY2021/22-onwards cohorts.</p>`,
     semester_units:`<div class="field-row"><label>Minimum units<input id="field-min" type="number" min="0" max="40" value="${rule?.minimum ?? 16}" required></label><label>Maximum units<input id="field-max" type="number" min="0" max="40" value="${rule?.maximum ?? 24}" required></label></div><label>First semester maximum<input id="field-first-max" type="number" min="0" max="40" value="${rule?.first_semester_maximum ?? 20}" required></label><p>Limits apply to non-empty semesters. Empty semesters are permitted.</p>`,
   };
   $('#rule-fields').innerHTML = fields[type];
@@ -249,7 +280,7 @@ function showRuleFields(rule=null) {
   $('#rule-strength').disabled = !soft || type === 'workload_target';
   if (!soft) $('#rule-strength').value='hard';
   if (type==='workload_target') $('#rule-strength').value='soft';
-  $('#rule-error').textContent='';
+    $('#rule-error').textContent='';
 }
 function openConstraintDialog(card=null) {
   if (state.busy) return;
@@ -270,13 +301,15 @@ function submitConstraint(event) {
   if (['require_courses','exclude_courses'].includes(type)) {rule.courses=[...new Set($('#field-courses').value.split(/[,\s]+/).map(c=>c.trim().toUpperCase()).filter(Boolean))];title=`${type==='require_courses'?'Include':'Exclude'} ${rule.courses.join(', ')}`;description=type==='require_courses'?'These courses must be part of the study plan.':'Do not select these courses in the plan.';}
   if (type==='blocked_semesters') {rule.semesters=[...new Set($('#field-semesters').value.split(/[,\s]+/).filter(Boolean).map(Number))];title=`Keep semester${rule.semesters.length>1?'s':''} ${rule.semesters.join(', ')} free`;description='No courses can be assigned to these semesters.';}
   if (type==='focus_area') {rule.area=$('#field-area').value;title=`Complete ${rule.area}`;description='Three primary courses, including one at level 4000 or above.';}
+  if (type==='minor_programme') {rule.programme=$('#field-minor').value;const m=state.config.minors.find(m=>m.id===rule.programme);title=`Complete a Minor in ${m.name}`;description=m.summary;}
   if (type==='semester_units') {rule.minimum=Number($('#field-min').value);rule.maximum=Number($('#field-max').value);rule.first_semester_maximum=Number($('#field-first-max').value);title=`Keep semester workloads at ${rule.minimum}–${rule.maximum} units`;description=`Non-empty semesters only. First semester at most ${rule.first_semester_maximum} units.`;}
   const error = validateManualRule(rule);
   if (error) {$('#rule-error').textContent=error;return;}
   if (!state.editing && state.cards.length >= 80) {$('#rule-error').textContent='Maximum 80 cards. Remove a card first.';return;}
   const card={id:state.editing || 'user_'+crypto.randomUUID().replaceAll('-','').slice(0,12),title,description,strength:$('#rule-strength').value,source:'user',rules:[rule]};
+  if(type==='minor_programme')card.source_urls=state.config.minors.find(m=>m.id===rule.programme).source_urls;
   if (state.editing) state.cards=state.cards.map(c=>c.id===state.editing?card:c); else state.cards.unshift(card);
-  state.filter=card.strength; markChanged();renderCards({newIds:[card.id]});$('#constraint-dialog').close();toast(state.editing?'Constraint updated':'Constraint added');
+  state.filter=constraintCategory(card); markChanged();renderCards({newIds:[card.id]});$('#constraint-dialog').close();toast(state.editing?'Constraint updated':'Constraint added');
 }
 function validateManualRule(rule) {
   const known=new Set(state.config.catalogue.map(c=>c.code));
@@ -291,14 +324,17 @@ async function downloadPlan() {
   const revision=state.revision,plan=state.plan,button=$('#download-plan');button.disabled=true;
   try{
     const assignments=Object.fromEntries(plan.semesters.flatMap(s=>s.courses.map(c=>[c.code,s.number])));
+    const minors=[...new Set(state.cards.flatMap(c=>c.rules.filter(r=>r.type==='minor_programme').map(r=>r.programme)))];
     const payload=await api('/api/exports/nusmods',{assignments,horizon:plan.semesters.length,
-      start_year:Number(plan.semesters[0].academic_year.slice(0,4)),math_qualified:plan.student_profile?.math_qualified ?? true});
+      start_year:Number(plan.semesters[0].academic_year.slice(0,4)),math_qualified:plan.student_profile?.math_qualified ?? true,
+      ...(minors.length?{minors,minor_allocations:plan.minor_allocations,category_allocations:plan.category_allocations}:{})});
     if(revision!==state.revision || plan!==state.plan || !canExportPlan())throw new Error('Plan changed during export. Generate an updated plan first.');
     const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download='pathway-nusmods-planner.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     toast('Academic checks passed. Planner JSON downloaded.');
   }catch(error){
     if(error.academicAudit && plan===state.plan){state.plan.academic_audit=error.academicAudit;state.plan.exportable=false;renderAcademicAudit();renderPlan();$('#export').disabled=true;}
+    if(error.minorAudit && plan===state.plan){state.plan.minor_audit=error.minorAudit;state.plan.exportable=false;renderMinorProgress();$('#export').disabled=true;}
     toast(error.message);
   }finally{button.disabled=false;}
 }
@@ -336,7 +372,7 @@ async function init() {
         $('#allow-unpublished').checked=saved.allowUnpublished===true;
       }
     } catch { /* A damaged browser draft must not prevent startup. */ }
-    renderCards();renderMessages();save();
+    renderCards();renderMessages();renderMinorOptions();save();
     $('#boot-error').hidden=true;
     $('#generate').disabled=false;$('#add-constraint').disabled=false;$('#reset').disabled=false;
     const health=await api('/api/health');
@@ -349,9 +385,18 @@ async function init() {
   } finally {$('#retry-init').disabled=false;}
 }
 $('#retry-init').addEventListener('click',init);
+$('#minor-options').addEventListener('click',event=>{
+  const add=event.target.closest('[data-add-minor]'),prompt=event.target.closest('[data-minor-prompt]');
+  if(add)addMinor(add.dataset.addMinor);
+  if(prompt){
+    const m=state.config.minors.find(m=>m.id===prompt.dataset.minorPrompt);
+    $('#chat-input').value=`I want to complete a Minor in ${m.name} alongside my NUS Computer Science degree. Add its AY2021/22-onwards course-group and unit requirements to my plan.`;
+    $('#chat-title').scrollIntoView({behavior:prefersReducedMotion()?'auto':'smooth'});$('#chat-input').focus();
+  }
+});
 $$('[data-filter]').forEach(button=>{
   button.addEventListener('click',()=>{state.filter=button.dataset.filter;renderCards();});
-  button.addEventListener('keydown',event=>{if (['ArrowLeft','ArrowRight'].includes(event.key)) {event.preventDefault();state.filter=state.filter==='hard'?'soft':'hard';renderCards();$(`[data-filter="${state.filter}"]`).focus();}});
+  button.addEventListener('keydown',event=>{if (['ArrowLeft','ArrowRight'].includes(event.key)) {event.preventDefault();const categories=['hard','soft','minor'];state.filter=categories[(categories.indexOf(state.filter)+(event.key==='ArrowRight'?1:2))%3];renderCards();$(`[data-filter="${state.filter}"]`).focus();}});
 });
 $('#constraint-list').addEventListener('click',async event=>{
   const remove=event.target.closest('[data-remove]'),edit=event.target.closest('[data-edit]');
@@ -387,11 +432,11 @@ $('#plan-content').addEventListener('click',event=>{
 $('#plan-content').addEventListener('change',event=>{if(event.target.id==='weekly-semester'){state.timetableToken++;$('#timetable-share').hidden=true;$('#weekly-content').innerHTML='';$('#weekly-status').hidden=true;$('#load-timetable').disabled=false;}});
 $('#export').addEventListener('click',()=>{if(!canExportPlan())return;$('#export-dialog').showModal();});
 $('#download-plan').addEventListener('click',downloadPlan);
-const categoryLabels={all:'All courses',ID:'ID',CD:'CD',GEA:'GEA',GEC:'GEC',GESS:'GESS',GEN:'GEN'};
+const categoryLabels={all:'All courses',ID:'ID',CD:'CD',GEA:'GEA',GEC:'GEC',GESS:'GESS',GEN:'GEN',MATH_MINOR:'Math minor',QF_MINOR:'QF minor'};
 let catalogueFilter='all';
 function renderCatalogue() {
   const query=$('#catalogue-search').value.trim().toLowerCase();
-  const descriptions={ID:'interdisciplinary',CD:'cross disciplinary',GEA:'data literacy',GEC:'cultures connections',GESS:'singapore studies',GEN:'communities engagement'};
+  const descriptions={ID:'interdisciplinary',CD:'cross disciplinary',GEA:'data literacy',GEC:'cultures connections',GESS:'singapore studies',GEN:'communities engagement',MATH_MINOR:'mathematics math minor',QF_MINOR:'quantitative finance minor'};
   const courses=state.config.catalogue.filter(c=>(catalogueFilter==='all'||(c.categories||[]).includes(catalogueFilter)) &&
     `${c.code} ${c.title} ${(c.categories||[]).map(g=>`${g} ${descriptions[g]||''}`).join(' ')}`.toLowerCase().includes(query));
   $('#catalogue-filters').innerHTML=Object.entries(categoryLabels).map(([key,label])=>`<button data-category="${key}" aria-pressed="${key===catalogueFilter}">${label} <small>${key==='all'?state.config.catalogue.length:state.config.catalogue.filter(c=>(c.categories||[]).includes(key)).length}</small></button>`).join('');

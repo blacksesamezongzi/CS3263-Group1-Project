@@ -91,8 +91,13 @@ class Focus(StrictModel):
         return area
 
 
+class MinorProgramme(StrictModel):
+    type: Literal['minor_programme']
+    programme: Literal['mathematics', 'quantitative_finance']
+
+
 Rule = Annotated[Union[MinUnits, CourseSet, ToggleRule, CourseSemester, FinishBy,
-                       SemesterUnits, WorkloadTarget, Blocked, Focus, CategoryUnits], Field(discriminator="type")]
+                       SemesterUnits, WorkloadTarget, Blocked, Focus, CategoryUnits, MinorProgramme], Field(discriminator="type")]
 
 
 class ConstraintCard(StrictModel):
@@ -137,6 +142,8 @@ class PlanRequest(StrictModel):
     def unique_ids(self):
         if len({c.id for c in self.cards}) != len(self.cards):
             raise ValueError("Constraint card IDs must be unique")
+        if self.start_year < 2021 and any(r.type == 'minor_programme' for c in self.cards for r in c.rules):
+            raise ValueError('Minor templates support admission cohorts AY2021/22 onwards only')
         if any(getattr(r, "semester", 1) > self.horizon or
                any(s > self.horizon for s in getattr(r, "semesters", []))
                for c in self.cards for r in c.rules):
@@ -172,9 +179,14 @@ class ExportRequest(StrictModel):
     horizon: int = Field(ge=2, le=12)
     start_year: int = Field(ge=2020, le=2040)
     math_qualified: bool = True
+    minors: list[Literal['mathematics', 'quantitative_finance']] = Field(default_factory=list, max_length=2)
+    minor_allocations: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    category_allocations: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode='after')
     def valid_assignments(self):
+        if self.minors and self.start_year < 2021:
+            raise ValueError('Minor templates support AY2021/22 onwards')
         if set(self.assignments) - CATALOG.keys():
             raise ValueError('Unknown course in exported assignments')
         if any(s > self.horizon for s in self.assignments.values()):

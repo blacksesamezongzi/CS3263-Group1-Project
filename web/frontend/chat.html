@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A direct interface to the models available through SoCLaaS.">
+  <title>SoCLaaS Interface</title>
+  <link rel="stylesheet" href="/static/chat.css?v=5">
+  <script type="module" src="/static/chat.js?v=5"></script>
+</head>
+<body>
+  <aside id="sidebar" aria-label="Conversations">
+    <div class="sidebar-top"><a class="wordmark" href="/chat"><img class="brand-logo" src="/static/chat-logo.svg" alt="" width="36" height="36"><span class="brand-text">SoCLaaS <span>Interface</span></span></a><button id="close-sidebar" class="icon-button mobile-only" aria-label="Close sidebar">×</button></div>
+    <button id="new-chat" class="new-chat"><span aria-hidden="true">＋</span> New chat</button>
+    <p class="sidebar-label">Chats</p>
+    <nav id="history" aria-label="Chat history"></nav>
+    <a class="planner-link" href="/">↗ Back to Pathway</a>
+  </aside>
+  <button id="sidebar-overlay" aria-label="Close sidebar" hidden></button>
+  <main>
+    <div class="chat-ambient" aria-hidden="true"><span></span><span></span></div>
+    <header class="chat-topbar">
+      <div class="topbar-left"><button id="open-sidebar" class="icon-button mobile-only" aria-label="Open sidebar" aria-expanded="false">☰</button>
+        <details id="model-menu" class="model-menu"><summary class="model-toggle" aria-label="Select SoCLaaS model"><span id="model-name">Connecting…</span><span id="model-kind" class="model-badge" hidden></span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></summary>
+          <div class="model-popover"><label class="sr-only" for="model-search">Search models</label><input id="model-search" type="search" placeholder="Search models…" autocomplete="off"><div id="model-list" role="group" aria-label="Available SoCLaaS models"></div><div class="model-menu-footer"><span id="model-count"></span><button id="refresh-models" type="button">Refresh</button></div></div>
+        </details>
+      </div>
+      <button id="export-chat" class="quiet-button" disabled>↓ Export chat</button>
+    </header>
+    <div id="connection-error" class="connection-error" role="alert" hidden><span id="connection-error-text"></span><button id="retry-connection" class="quiet-button">Retry</button></div>
+    <section id="conversation-scroll" class="conversation-scroll" aria-label="Conversation">
+      <div id="welcome" class="welcome">
+        <div class="welcome-heading"><img class="welcome-logo" src="/static/chat-logo.svg" alt="SoCLaaS Interface" width="64" height="64"><h1>LLM or CSP: how do the plans differ?</h1></div>
+        <section class="prompt-library" aria-label="Default planning prompts">
+          <div class="prompt-library-heading"><div><h2>Start with what matters.</h2><p>The same defaults as Pathway, ready for your prompt.</p></div><button id="add-all-prompts" class="all-prompts" type="button" disabled>＋ Add all defaults</button></div>
+          <div class="prompt-tabs" role="tablist" aria-label="Prompt categories"><button id="prompt-tab-hard" type="button" role="tab" aria-selected="true" aria-controls="prompt-cards" data-prompt-category="hard">Requirements <span id="prompt-hard-count">0</span></button><button id="prompt-tab-soft" type="button" role="tab" aria-selected="false" aria-controls="prompt-cards" data-prompt-category="soft">Preferences <span id="prompt-soft-count">0</span></button><button id="prompt-tab-minor" type="button" role="tab" aria-selected="false" aria-controls="prompt-cards" data-prompt-category="minor">Minors <span id="prompt-minor-count">0</span></button></div>
+          <div id="prompt-cards" class="prompt-grid" role="tabpanel" aria-labelledby="prompt-tab-hard"><p class="prompts-loading">Loading planning prompts…</p></div>
+          <button id="expand-prompts" class="expand-prompts" type="button" hidden>Show all requirements ↓</button>
+        </section>
+      </div>
+      <div id="messages" class="thread" role="log" aria-label="Messages" aria-live="polite" aria-relevant="additions"></div>
+    </section>
+    <div class="composer-area"><div class="composer-width"><div id="run-status" class="run-status" role="status" hidden></div>
+      <form id="chat-form"><label class="sr-only" for="chat-input">Message SoCLaaS</label><div class="composer"><div id="attachments" class="attachments" aria-label="Attached files" hidden></div><textarea id="chat-input" rows="1" maxlength="16000" placeholder="Message SoCLaaS" disabled></textarea><div class="composer-bottom"><button id="attach-file" class="attach-button" type="button" aria-label="Attach image" hidden>＋</button><input id="file-input" type="file" hidden><button id="send" class="send-button" type="submit" aria-label="Send message" disabled>↑</button><button id="stop" class="send-button stop-button" type="button" aria-label="Stop generating" hidden>■</button></div></div></form>
+      <p id="comparison-note" class="composer-note" hidden>Same model as Pathway</p>
+    </div></div>
+  </main>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

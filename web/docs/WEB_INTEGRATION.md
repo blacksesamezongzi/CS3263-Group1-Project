@@ -117,3 +117,15 @@ Weekly share URL 使用 `/timetable/sem-N/share?...` 的课程及班次编码。
 下载不再直接序列化浏览器里的 JSON。新增 `POST /api/exports/nusmods` 接收 course-to-semester assignments、horizon、start_year 和 math_qualified，由后端重新检查基础课和前置顺序后构造原生 JSON；失败返回 HTTP 409 及具体 academic_audit。客户端伪造“已通过”字段或使用旧计划不能绕过此复核。年份和学期按同一映射重建。
 
 浏览器 draftVersion 升至 3：仅升级旧草稿时恢复漏掉的 foundation / prerequisite 默认卡片，并保留用户新增偏好；升级后主动删除仍会保留删除状态，同时显示预览/导出限制，避免暗中把规则重新加进搜索。
+
+## Minor 约束与选课分配
+
+新增 hard rule：`{"type":"minor_programme","programme":"mathematics"}` 或 `programme:"quantitative_finance"`。它是一条前端规则，对应后端多个课程组、unit 和重用限制；前端单独显示在 **Minors** 分类，默认 16 张卡不包含 optional minors。`GET /api/config.minors` 返回两项定义、官网/PDF 来源与当前真实课程池。Study plan 支持直接添加，也支持填入 agent prompt。
+
+`backend/minors.py` 保存 AY2021/22-onwards 官网规则。每个 minor 的变量将课程分配到一个且仅一个组；数学为 foundation/intermediate/advanced，QF 为 introduction/mathematics/fundamentals/investment/advanced。20+ units、至少 12 distinct units、最多 8 shared units、禁止三重计入、minor 之间 entire eligible-pool 去重和明确课程 preclusion 一并进入 CSP。QF 的 MA2301 已停开，使用 Option B。`minor_allocations` 返回 programme → group → codes；`minor_audit` 用独立 Python 实现复核分组和重用，任何失败都会拒绝结果。
+
+`assets/data/minor_course_details.json` 是独立的 AY2026/27 NUSMods supplement，保留原始主课程数据，新增 57 门课程。只有 active minor 或显式课程请求才扩展 solver pool；prerequisite 依然按实际 AND/OR 树处理，不把 preclusion 当作 prerequisite 替代。H2 Mathematics qualification 对仅以 MA1301/MA1301X 为入门条件的课程生效，不豁免后续先修课程本身。
+
+导出时前端增加 `minors`、`minor_allocations`、`category_allocations`，服务端再次复核；无 minor 的旧请求兼容。SoCLaaS plain chat 的 `minor_prompt_cards` 与上面的 definitions 共用数据，单独归到 Minors；不会自动随 Add all defaults 加入。UI 手动插入的 prompt 才会发送给纯模型。
+
+这些规则假设 CS primary major、NUS-earned credits，不执行 EduRec declaration、个人 exemption 或完整 CourseReg programme/grade eligibility。支持学期 5 之前的申报提醒，不声称自动完成申报或完整毕业认证。

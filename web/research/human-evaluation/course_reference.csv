@@ -1,0 +1,339 @@
+code,title,units,offered_reference_semesters,prerequisite,nusmods_reference
+ACC1701XA,Accounting for Decision Makers,4,"1,2",Applicable matriculation cohort,https://nusmods.com/courses/ACC1701XA
+ACC1701XB,Accounting for Decision Makers,4,2,Applicable matriculation cohort,https://nusmods.com/courses/ACC1701XB
+ACC1701XC,Accounting for Decision Makers,4,"1,2",Applicable matriculation cohort,https://nusmods.com/courses/ACC1701XC
+ACC1701XD,Accounting for Decision Makers,4,1,Applicable matriculation cohort,https://nusmods.com/courses/ACC1701XD
+BT1101,Introduction to Business Analytics,4,"1,2",No course prerequisite,https://nusmods.com/courses/BT1101
+CDE2300,Product Design and Innovation,4,"1,2",No course prerequisite,https://nusmods.com/courses/CDE2300
+CDE2310,Fundamentals of Systems Design,4,2,No course prerequisite,https://nusmods.com/courses/CDE2310
+CDE2501,Sustainable Systems for Liveable Cities,4,"1,2",No course prerequisite,https://nusmods.com/courses/CDE2501
+CLC1101,Engaging and Building Communities,4,"1,2",No course prerequisite,https://nusmods.com/courses/CLC1101
+CLC2204,Community Development With Youth,4,"1,2",No course prerequisite,https://nusmods.com/courses/CLC2204
+CLC3301A,Communicating Social Issues in Singapore,4,2,No course prerequisite,https://nusmods.com/courses/CLC3301A
+CLC3303,Community Leadership,4,"1,2",No course prerequisite,https://nusmods.com/courses/CLC3303
+CLC3304A,"City, Culture and Community",4,1,No course prerequisite,https://nusmods.com/courses/CLC3304A
+CLC3307,Learning for Social Change,4,"1,2",No course prerequisite,https://nusmods.com/courses/CLC3307
+CLC3308,Being There: Engaging communities on the ground,4,2,No course prerequisite,https://nusmods.com/courses/CLC3308
+CP1001,Foundations of Innovation in Computing,2,1,No course prerequisite,https://nusmods.com/courses/CP1001
+CP1002,Frontiers of Innovation in Computing,2,2,CP1001,https://nusmods.com/courses/CP1002
+CP1008,Learning with Generative AI Tools,2,2,No course prerequisite,https://nusmods.com/courses/CP1008
+CP3107,Computing for Social Service Agencies I,6,1,((CS2030 OR CS2030S OR CS2030DE OR CS2030HS OR CS2113T OR CS2113) AND (CS2040 OR CS2040C OR CS2040S OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CP3107
+CP4106,Computing Project,8,"1,2",No course prerequisite,https://nusmods.com/courses/CP4106
+CP4281,Emerging Topics in Computing I: AI for Graphics,4,1,CS3241,https://nusmods.com/courses/CP4281
+CP4282,Emerging Topics in Computing II: Gaussian Splatting,4,1,"(CS3241 AND (MA1521 OR MA2002 OR MA1505 OR At least 2 of (MA1511, MA1512)) AND (MA1522 OR MA1508E OR MA1513 OR MA2001))",https://nusmods.com/courses/CP4282
+CP4283,Emerging Topics in Computing III: Deep Generative Models,4,1,CS3264,https://nusmods.com/courses/CP4283
+CP4284,Emerging Topics in Computing IV: Large Language Model Reasoning Agents,4,2,"At least 2 of (CS4248, CS3263)",https://nusmods.com/courses/CP4284
+CP4285,Emerging Topics in Computing V: Modern Recommendation Systems,4,1,(CS2109S OR CS2109HS),https://nusmods.com/courses/CP4285
+CS1101S,Programming Methodology,4,"1,2",No course prerequisite,https://nusmods.com/courses/CS1101S
+CS1231,Discrete Structures,4,"1,2",(MA1301X OR MA1301),https://nusmods.com/courses/CS1231
+CS1231S,Discrete Structures,4,"1,2",(MA1301X OR MA1301),https://nusmods.com/courses/CS1231S
+CS2030S,Programming Methodology II,4,"1,2",(CS1010 OR CS1010E OR CS1010X OR CS1101S OR CS1010S OR CS1010J OR CS1010A OR CS1010HS OR UTC2851),https://nusmods.com/courses/CS2030S
+CS2040S,Data Structures and Algorithms,4,"1,2",((CS1010 OR CS1010E OR CS1010X OR CS1101S OR CS1010S OR CS1010J OR CS1010A OR CS1010HS OR UTC2851) AND (CS1231S OR CS1231 OR MA1100 OR MA1100T)),https://nusmods.com/courses/CS2040S
+CS2100,Computer Organisation,4,"1,2",(YSC1212 OR CS1010 OR CS1010J OR CS1010E OR CS1010S OR CS1010X OR CS1101S OR CS1010A OR CS1010HS OR UTC2851),https://nusmods.com/courses/CS2100
+CS2101,Effective Communication for Computing Professionals,4,"1,2",No course prerequisite,https://nusmods.com/courses/CS2101
+CS2102,Database Systems,4,"1,2",((CS1231 OR MA1100 OR MA1100T OR CS1231S) AND (CS2030S OR CS2030 OR CS2030DE OR CS2030HS OR YSC2229 OR CS2040 OR CS2040C OR CS2040S OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS2102
+CS2103T,Software Engineering,4,"1,2",((CS2030 OR CS2030S OR CS2030DE OR CS2030HS) AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS2103T
+CS2104,Programming Language Concepts,4,1,(CS2030 OR CS2030S OR CS2030DE OR CS2030HS OR CS2113 OR CS2113T),https://nusmods.com/courses/CS2104
+CS2105,Introduction to Computer Networks,4,"1,2",(YSC2229 OR CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS),https://nusmods.com/courses/CS2105
+CS2106,Introduction to Operating Systems,4,"1,2",(CS2100 OR CS2100DE OR CS2100HS OR EE2007 OR EE2024 OR EE2028),https://nusmods.com/courses/CS2106
+CS2107,Introduction to Information Security,4,"1,2",(YSC1212 OR CS1010J OR CS1101S OR CS1010 OR CS1010E OR CS1010S OR CS1010X OR CS1010A OR CS1010HS OR UTC2851),https://nusmods.com/courses/CS2107
+CS2108,Introduction to Media Computing,4,2,((CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND (MA1522 OR MA2001 OR MA1513 OR MA1311 OR MA1508E)),https://nusmods.com/courses/CS2108
+CS2109S,Introduction to AI and Machine Learning,4,"1,2","((YSC2229 OR CS2040S OR CS2040C OR CS2040HS OR CS2040 OR CS2040DE) AND (At least 2 of (MA1511, MA1512) OR MA1521 OR MA2002 OR MA1102R OR MA1312 OR MA1507 OR MA1505))",https://nusmods.com/courses/CS2109S
+CS2111,Human-Centred Computing,4,2,(CS1010A OR CS1010E OR CS1010X OR CS1101S OR CS1010S OR UTC2851 OR CS1010HS OR CS1010J OR CS1010 OR NM2207),https://nusmods.com/courses/CS2111
+CS2113,Software Engineering & Object-Oriented Programming,4,"1,2",(CS2040C OR CS2040S OR CS2040 OR CS2040HS OR CS2040DE),https://nusmods.com/courses/CS2113
+CS2220,Introduction to Computational Biology,4,1,(CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS),https://nusmods.com/courses/CS2220
+CS2251,Optimization for Machine Learning,4,1,"((MA1522 OR MA1513 OR MA1508E OR MA2001) AND (CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1312 OR MA1521 OR MA2002 OR At least 2 of (MA1511, MA1512)) AND (ST2334 OR ((ST2131 OR MA2116 OR MA2116T) AND ST2132)))",https://nusmods.com/courses/CS2251
+CS2309,CS Research Methodology,4,1,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (((CS2030 OR CS2030S OR CS2030DE OR CS2030HS) AND (CS2040 OR CS2040S OR CS2040HS OR CS2040C OR CS2040DE)) OR CS2113 OR CS2113T)),https://nusmods.com/courses/CS2309
+CS3103,Computer Networks Practice,4,1,(CS2105 OR EE3204 OR EE3204E OR EE4204),https://nusmods.com/courses/CS3103
+CS3210,Parallel Computing,4,"1,2",(CS2100 OR CS2100DE OR CS2100HS OR CG2007 OR EE2028 OR CG2028 OR EE2024),https://nusmods.com/courses/CS3210
+CS3211,Concurrent Programming,4,2,(CS2106 OR CG2271),https://nusmods.com/courses/CS3211
+CS3213,Software Requirements Specification and Validation,4,2,(CS2103T OR CS2103 OR CS2103DE OR CS2113T OR CS2113),https://nusmods.com/courses/CS3213
+CS3216,Software Product Engineering for Digital Markets,5,1,(CS2103 OR CS2103T OR CS2103DE OR CS2113 OR CS2113T),https://nusmods.com/courses/CS3216
+CS3219,Software Design and Architecture,4,"1,2",(YSC3232 OR CS2103 OR CS2103T OR CS2103DE OR CS2113T OR CS2113),https://nusmods.com/courses/CS3219
+CS3223,Database Systems Implementation,4,"1,2",((CS2040S OR CS2040 OR CS2040C OR CS2040DE OR CS2040HS) AND (CS2102 OR IT2002)),https://nusmods.com/courses/CS3223
+CS3227,Agentic Software Engineering,4,"1,2",(CS2103 OR CS2103T OR CS2113 OR CS2103DE),https://nusmods.com/courses/CS3227
+CS3230,Design and Analysis of Algorithms,4,"1,2",((YSC2229 OR CS2040S OR CS2040 OR CS2040C OR CS2040DE OR CS2040HS) AND (CS1231 OR CS1231S OR MA1100T OR MA1100)),https://nusmods.com/courses/CS3230
+CS3231,Theory of Computation,4,1,((CS1231 OR CS1231S OR MA1100T OR MA1100) AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS3231
+CS3233,Competitive Programming,4,2,((CS2030S OR CS2030 OR CS2030DE OR CS2030HS) AND (CS2040S OR CS2040 OR CS2040C OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS3233
+CS3234,Logic for Proofs and Programs,4,2,(CS1231 OR CS1231S OR MA1100T OR MA1100),https://nusmods.com/courses/CS3234
+CS3235,Computer Security,4,"1,2",((CS2105 OR EE3204 OR EE4204) AND (CS2106 OR YSC3217 OR CG2271) AND CS2107),https://nusmods.com/courses/CS3235
+CS3236,Introduction to Information Theory,4,2,((MA1100 OR MA1100T OR CS1231 OR CS1231S) AND (EE2012 OR EE2012A OR MA2216 OR MA2116 OR MA2116T OR ST2131 OR ST2334)),https://nusmods.com/courses/CS3236
+CS3237,Introduction to Internet of Things,4,1,((EE2028 OR EE2024 OR CG2028 OR CS2100 OR CS2100DE OR CS2100HS) AND (CS1010 OR CS1101S OR CS1010X OR CS1010E OR CS1010J OR CS1010S OR CS1010A OR CS1010HS OR UTC2851)),https://nusmods.com/courses/CS3237
+CS3240,Interaction Design,4,1,(CS2111 OR NM2207),https://nusmods.com/courses/CS3240
+CS3241,Computer Graphics,4,1,((CS2030S OR CS2030 OR CS2030DE OR CS2030HS OR CS2113 OR CS2113T) AND (CS2040 OR YSC2229 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS3241
+CS3242,3D Modeling and Animation,4,2,"((PC1201 OR PC1221 OR PC1221X) AND CS3241 AND (MA1522 OR MA1508E OR MA1513 OR MA1311 OR MA2001 OR MA1101R) AND (MA1521 OR MA2002 OR MA1505 OR MA1507 OR MA1102R OR At least 2 of (MA1511, MA1512)))",https://nusmods.com/courses/CS3242
+CS3243,Introduction to Artificial Intelligence,4,2,((CS2040 OR CS2040C OR CS2040S OR CS2040DE OR CS2040HS OR YSC2229) AND (CS1231S OR CS1231 OR MA1100T OR MA1100)),https://nusmods.com/courses/CS3243
+CS3244,Machine Learning,4,"1,2","((CS2040 OR CS2040C OR CS2040S OR CS2040DE OR CS2040HS OR YSC2229) AND (EE2012A OR EE2012 OR YSC2243 OR ST2131 OR ST2334 OR MA2116 OR MA2116T OR MA2216) AND (At least 2 of (MA1511, MA1512) OR ((MA2001 OR MA1522 OR MA1508E OR MA1311 OR MA1513 OR MA1101R) AND (MA2002 OR MA1521 OR MA1505 OR MA1507 OR MA1102R))))",https://nusmods.com/courses/CS3244
+CS3247,Game Development,4,2,CS3241,https://nusmods.com/courses/CS3247
+CS3249,Conversational User Interface,4,1,CS2111,https://nusmods.com/courses/CS3249
+CS3263,Foundations of Artificial Intelligence,4,"1,2",((CS2109S OR CS2109HS) AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND (MA2001 OR MA1522 OR MA1513 OR MA1508E OR MA1101R) AND (EE2012A OR EE2012 OR ST2131 OR MA2116 OR MA2116T OR ST2334 OR MA2216)),https://nusmods.com/courses/CS3263
+CS3264,Foundations of Machine Learning,4,"1,2",(CS2109S AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND (MA1101R OR MA1311 OR MA1513 OR MA1508E OR MA2001 OR MA1522) AND (EE2012A OR EE2012 OR ST2131 OR MA2116 OR MA2116T OR ST2334 OR MA2216)),https://nusmods.com/courses/CS3264
+CS3268,Responsible AI: from Algorithms to Impact,4,1,((CS2109S OR CS2109HS OR CS3243) AND (ST2334 OR ((ST2131 OR MA2116 OR MA2116T) AND ST2132))),https://nusmods.com/courses/CS3268
+CS3281,Software Engineering for Evolving Production Systems I,4,2,(CS2103 OR CS2103T OR CS2103DE OR CS2113),https://nusmods.com/courses/CS3281
+CS3282,Software Engineering for Evolving Production Systems II,4,2,CS3281,https://nusmods.com/courses/CS3282
+CS4211,Formal Methods for Software Engineering,4,1,(CS2103 OR CS2103T OR CS2103DE OR YSC3232 OR CS2113 OR CS2113T),https://nusmods.com/courses/CS4211
+CS4212,Compiler Design,4,2,(CS2104 OR CS3212),https://nusmods.com/courses/CS4212
+CS4215,Programming Language Implementation,4,2,((CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND (CS2030 OR CS2030S OR CS2030DE OR CS2030HS OR CS2113 OR CS2113T)),https://nusmods.com/courses/CS4215
+CS4218,Software Testing,4,"1,2",(CS3213 OR CS3219),https://nusmods.com/courses/CS4218
+CS4220,Knowledge Discovery Methods in Bioinformatics,4,2,(CS2220 OR LSM2104 OR LSM2241 OR ZB2101),https://nusmods.com/courses/CS4220
+CS4221,Database Applications Design and Tuning,4,2,CS3223,https://nusmods.com/courses/CS4221
+CS4222,Wireless Networking,4,2,((EE3204 OR EE3204E OR EE4204 OR CS2105) AND (EE2012A OR EE2012 OR ST2131 OR ST2334 OR MA2116 OR MA2116T OR MA2216)),https://nusmods.com/courses/CS4222
+CS4223,Multi-core Architectures,4,1,((CS2106 OR CG2271) AND (CS3210 OR CS3220 OR CG3207)),https://nusmods.com/courses/CS4223
+CS4224,Distributed Databases,4,1,CS3223,https://nusmods.com/courses/CS4224
+CS4225,Big Data Systems for Data Science,4,"1,2",(CS2102 OR IT2002),https://nusmods.com/courses/CS4225
+CS4226,Internet Architecture,4,1,((CS2105 OR EE3204 OR EE3204E OR EE4204) AND (EE2012A OR EE2012 OR MA2216 OR ST2131 OR ST2334 OR MA2116 OR MA2116T)),https://nusmods.com/courses/CS4226
+CS4230,Foundations of Modern Cryptography,4,2,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND CS3230 AND (ST2334 OR ST2131 OR MA2216 OR MA2116 OR MA2116T)),https://nusmods.com/courses/CS4230
+CS4231,Parallel and Distributed Algorithms,4,2,(CS3210 OR CS3230),https://nusmods.com/courses/CS4231
+CS4234,Optimisation Algorithms,4,1,((MA2001 OR MA1101R OR YSC2232 OR MA1311 OR MA1508E OR MA1522 OR MA1513) AND (YSC3203 OR CS3230)),https://nusmods.com/courses/CS4234
+CS4236,Cryptography in Practice: Systems and Applications,4,1,((YSC2229 OR CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND CS2107 AND (CS1231 OR CS1231S OR MA1100T OR MA1100)),https://nusmods.com/courses/CS4236
+CS4238,Computer Security Practice,4,"1,2",CS3235,https://nusmods.com/courses/CS4238
+CS4239,Software Security,4,1,(CS3235 AND (CS2103T OR CS2103 OR CS2103DE OR CS2113 OR CS2113T)),https://nusmods.com/courses/CS4239
+CS4240,Interaction Design for Virtual and Augmented Reality,4,2,(CS3240 AND (MA1301 OR MA1301X)),https://nusmods.com/courses/CS4240
+CS4243,Computer Vision and Pattern Recognition,4,"1,2","((YSC2232 OR MA2001 OR MA1101R OR MA1311 OR MA1508E OR MA1513 OR MA1522) AND (ST1131 OR ST1131A OR ST1232 OR ST2131 OR MA2116 OR MA2116T OR MA2216 OR EE2012A OR EE2012 OR ST2334 OR YSC2243) AND (CS2030 OR CS2030S OR CS2030DE OR CS2030HS OR CS2113 OR CS2113T) AND (YSC2229 OR CS2040 OR CS2040S OR CS2040DE OR CS2040C OR CS2040HS) AND (MA1102R OR MA2002 OR YSC1216 OR MA1505 OR MA1521 OR MA1507 OR At least 2 of (MA1512, MA1511)))",https://nusmods.com/courses/CS4243
+CS4246,Reinforcement Learning and Sequential Decision Making,4,"1,2",((EE2012A OR EE2012 OR ST2132 OR ST2334 OR ((ST2131 OR MA2116 OR MA2116T OR MA2216) AND (ST1131 OR ST1232 OR DCS2008 OR ST1131A))) AND (CS3243 OR CS3263)),https://nusmods.com/courses/CS4246
+CS4247,Graphics Rendering Techniques,4,2,CS3241,https://nusmods.com/courses/CS4247
+CS4248,Introduction to Large Language Models,4,"1,2","((CS2109S OR CS2109HS OR CS3244 OR MA3270 OR ST4248) AND (EE2012A OR EE2012 OR ST2131 OR MA2216 OR MA2116 OR MA2116T OR ST2334 OR YSC2243) AND (MA1505 OR MA1507 OR MA1521 OR MA1102R OR YSC1216 OR MA2002 OR At least 2 of (MA1511, MA1512)))",https://nusmods.com/courses/CS4248
+CS4249,Quantitative Methods of Human-Computer Interaction,4,2,(CS3240 OR NM2216 OR NM2213 OR NM3243),https://nusmods.com/courses/CS4249
+CS4261,Algorithmic Mechanism Design,4,1,((EE2012A OR EE2012 OR ST2131 OR MA2216 OR ST2334 OR MA2116 OR MA2116T) AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS) AND (MA1100 OR MA1100T OR CS1231S OR CS1231) AND (MA2001 OR MA1101R OR MA1311 OR MA1508E OR MA1513 OR MA1522)),https://nusmods.com/courses/CS4261
+CS4262,Machine Learning Systems,4,2,((CS2106 OR CG2271) AND (CS3244 OR CS3264 OR CG3201)),https://nusmods.com/courses/CS4262
+CS4263,Artificial Intelligence Principles,4,1,((CS2040 OR CS2040C OR CS2040S OR CS2040DE OR CS2040HS) AND (CS1231 OR CS1231S OR MA1100 OR MA1100T)),https://nusmods.com/courses/CS4263
+CS4268,Quantum Computing,4,2,(CS3230 AND (EE2012A OR EE2012 OR ST2131 OR MA2216 OR ST2334 OR MA2116 OR MA2116T) AND (MA1101R OR MA1311 OR MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/CS4268
+CS4277,3D Computer Vision,4,2,((MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1506 OR MA1508E) AND (CS2040 OR CS2040S OR CS2040C OR CS2040DE OR CS2040HS)),https://nusmods.com/courses/CS4277
+CS4278,Intelligent Robots: Algorithms and Systems,4,1,"((CS3263 OR CS3243) AND (MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1508E OR MA1513) AND (EE2012 OR EE2012A OR ST2131 OR ST2334 OR MA2116 OR MA2116T OR MA2216) AND (MA2002 OR MA1102R OR MA1505 OR MA1507 OR MA1521 OR At least 2 of (MA1512, MA1511)))",https://nusmods.com/courses/CS4278
+CS4330,Combinatorial Methods in Bioinformatics,4,2,((CS2040C OR CS2040 OR CS2040S OR CS2040DE OR CS2040HS) AND (CS2220 OR LSM2104 OR LSM2241 OR ZB2101)),https://nusmods.com/courses/CS4330
+CS4350,Game Development Project,4,1,(CS3247 OR NM3216 OR NM4260 OR NM4260HM),https://nusmods.com/courses/CS4350
+CS4352,Industry Seminar in Cybersecurity,2,1,CS2107,https://nusmods.com/courses/CS4352
+CS4353,Interactive Systems Development Project,4,1,"(((CS2103DE OR CS2103 OR CS2103T OR CS2113) AND CS3240) OR (NM2207 AND (NM3243 OR NM4259 OR At least 2 of (ID2116, ID3131))))",https://nusmods.com/courses/CS4353
+CS4430,Computational Complexity,4,2,CS3231,https://nusmods.com/courses/CS4430
+CS5218,Principles and Practice of Program Analysis,4,2,(CS4212 OR CS4215),https://nusmods.com/courses/CS5218
+CS5223,Distributed Systems,4,"1,2",CS3211,https://nusmods.com/courses/CS5223
+CS5224,Cloud Computing,4,"1,2",No course prerequisite,https://nusmods.com/courses/CS5224
+CS5228,Knowledge Discovery and Data Mining,4,"1,2",((CS2109S OR CS3243) AND CS2102 AND (EE2012A OR EE2012 OR ST2132 OR ST2334 OR ((ST2131 OR MA2216 OR MA2116T OR MA2116) AND (ST1131A OR ST1131 OR DSC2008 OR ST1232)))),https://nusmods.com/courses/CS5228
+CS5229,Advanced Computer Networks,4,1,(CS4226 OR EE4210),https://nusmods.com/courses/CS5229
+CS5230,Computational Complexity,4,2,CS3231,https://nusmods.com/courses/CS5230
+CS5231,Systems Security,4,1,CS3235,https://nusmods.com/courses/CS5231
+CS5233,Simulation and Modelling Techniques,4,2,(CS4231 AND (EE2012A OR EE2012 OR ST2132 OR ST2334 OR ((ST2131 OR MA2216) AND (ST1131A OR ST1131 OR DSC2008 OR ST1232)))),https://nusmods.com/courses/CS5233
+CS5234,Algorithms at Scale,4,1,CS3230,https://nusmods.com/courses/CS5234
+CS5239,Performance Analysis of Computer Systems,4,1,((CS2030 OR CS2030S OR CS2113 OR CS2113T) AND (CS2106 OR CG2271) AND ((ST1131 AND (ST2131 OR MA2116 OR MA2116T)) OR ST2334)),https://nusmods.com/courses/CS5239
+CS5240,Theoretical Foundations in MultiMedia,4,1,"((CS2040 OR CS2040S OR CS2040C) AND (MA2001 OR MA1522 OR MA1508E OR MA1513 OR MA1311) AND (EE2012A OR EE2012 OR ST1131 OR ST2131 OR MA2116 OR MA2116T OR ST2334) AND (MA2002 OR MA1505 OR MA1521 OR At least 2 of (MA1512, MA1511)))",https://nusmods.com/courses/CS5240
+CS5242,Neural Networks and Deep Learning,4,"1,2",((CS2109S OR CS3244 OR CG3201) AND (EE2012 OR EE2012A OR MA2216 OR MA2116 OR MA2116T OR ST2131 OR ST2334)),https://nusmods.com/courses/CS5242
+CS5246,Text Mining,4,2,((CS2103 OR CS2103T OR CS2113 OR CS2113T) AND (MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1508E OR MA1513) AND (EE2012A OR EE2012 OR MA2116 OR MA2116T OR MA2216 OR ST2131 OR ST2334) AND (CS3244 OR CS2109S OR MA3270 OR ST4248)),https://nusmods.com/courses/CS5246
+CS5250,Advanced Operating Systems,4,2,(CS2106 OR CG2271),https://nusmods.com/courses/CS5250
+CS5260,Neural Networks and Deep Learning II,4,2,CS5242,https://nusmods.com/courses/CS5260
+CS5272,Embedded Software Design,4,2,((CS2106 OR CG2271) AND (CS2103 OR CS2103T OR CS2113 OR CS2113T)),https://nusmods.com/courses/CS5272
+CS5275,The Algorithm Designer's Toolkit,4,2,(CS3230 AND (EE2012 OR EE2012A OR ST2132 OR ST2334 OR MA2116 OR MA2116T OR MA2216 OR ST2131) AND (MA1101R OR MA1311 OR MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/CS5275
+CS5284,Graph Machine Learning,4,1,"((MA1101R OR MA1311 OR MA1506 OR MA1508E OR MA2001 OR MA1522) AND (MA1102R OR MA1505 OR MA1521 OR MA2002 OR At least 2 of (MA1511, MA1512)) AND (CS2040 OR CS2040C OR CS2040S) AND (CS3263 OR CS3264 OR CS3244 OR CG3201))",https://nusmods.com/courses/CS5284
+CS5321,Network Security,4,2,CS3235,https://nusmods.com/courses/CS5321
+CS5322,Database Security,4,1,CS3223,https://nusmods.com/courses/CS5322
+CS5330,Randomized Algorithms,4,2,CS3230,https://nusmods.com/courses/CS5330
+CS5332,Biometric Authentication,4,2,"((CS2040 OR CS2040C OR CS2040S) AND (MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1508E OR MA1513) AND (MA2002 OR MA1102R OR MA1505 OR MA1521 OR MA1507 OR At least 2 of (MA1512, MA1511)) AND (EE2012 OR EE2012A OR ST2132 OR ST2334 OR ((MA2116 OR MA2116T OR MA2216 OR ST2131) AND (ST1131 OR ST1131A OR ST1232 OR DSC2008))))",https://nusmods.com/courses/CS5332
+CS5339,Theory and Algorithms for Machine Learning,4,2,((CS3264 OR CS3244 OR CG3201) AND (EE2012 OR EE2012A OR MA2216 OR MA2116 OR MA2116T OR ST2131 OR ST2334)),https://nusmods.com/courses/CS5339
+CS5340,Uncertainty Modelling in AI,4,"1,2",((CS3263 OR CS3243) AND (EE2012A OR EE2012 OR ST2132 OR ST2334 OR ((ST2131 OR MA2216 OR MA2116 OR MA2116T) AND (ST1131A OR ST1131 OR DSC2008 OR ST1232)))),https://nusmods.com/courses/CS5340
+CS5343,Advanced Computer Animation,4,2,CS3242,https://nusmods.com/courses/CS5343
+CS5344,Big-Data Analytics Technology,4,"1,2",BT5110,https://nusmods.com/courses/CS5344
+CS5346,Information Visualisation,4,2,((CS2010 OR CS2040 OR CS2040S OR CS2040C) AND CS2102 AND CS3240 AND (EE2012 OR EE2012A OR ST1131A OR ST1131 OR ST1232 OR DSC2008 OR ST2132 OR ST2334)),https://nusmods.com/courses/CS5346
+CS5421,Database Applications Design and Tuning,4,2,CS3223,https://nusmods.com/courses/CS5421
+CS5422,Wireless Networking,4,2,((EE3204 OR EE3204E OR EE4204 OR CS2105) AND (EE2012A OR EE2012 OR ST2131 OR ST2334 OR MA2116 OR MA2116T OR MA2216)),https://nusmods.com/courses/CS5422
+CS5425,Big Data Systems for Data Science,4,"1,2",(CS2102 OR IT2002),https://nusmods.com/courses/CS5425
+CS5430,Foundations of Modern Cryptography,4,2,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND CS3230 AND (ST2334 OR ST2131 OR MA2216 OR MA2116 OR MA2116T)),https://nusmods.com/courses/CS5430
+CS5439,Software Security,4,1,(CS3235 AND (CS2103T OR CS2103 OR CS2113 OR CS2113T)),https://nusmods.com/courses/CS5439
+CS5446,Reinforcement Learning and Sequential Decision Making,4,"1,2",((EE2012A OR EE2012 OR ST2132 OR ST2334 OR ((ST2131 OR MA2116 OR MA2116T OR MA2216) AND (ST1131 OR ST1232 OR DCS2008 OR ST1131A))) AND (CS3243 OR CS3263)),https://nusmods.com/courses/CS5446
+CS5461,Algorithmic Mechanism Design,4,1,((EE2012A OR EE2012 OR ST2131 OR MA2216 OR ST2334 OR MA2116 OR MA2116T) AND (CS2010 OR CS2020 OR CS2040 OR CS2040S OR CS2040C) AND (MA1100 OR MA1100T OR CS1231S OR CS1231) AND (MA2001 OR MA1101R OR MA1311 OR MA1508E OR MA1513)),https://nusmods.com/courses/CS5461
+CS5462,Machine Learning Systems,4,2,((CS2106 OR CG2271) AND (CS3244 OR CS3264 OR CG3201)),https://nusmods.com/courses/CS5462
+CS5477,3D Computer Vision,4,2,((MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1506 OR MA1508E) AND (CS2040 OR CS2020 OR CS2010 OR CS2040S OR CS2040C)),https://nusmods.com/courses/CS5477
+CS5478,Intelligent Robots: Algorithms and Systems,4,1,"((CS3263 OR CS3243) AND (MA2001 OR MA1522 OR MA1101R OR MA1311 OR MA1508E) AND (EE2012 OR EE2012A OR ST2131 OR ST2334) AND (MA2002 OR MA1102R OR MA1505 OR MA1521 OR At least 2 of (MA1512, MA1511)))",https://nusmods.com/courses/CS5478
+CS5562,Trustworthy Machine Learning,4,2,(CS3230 AND (EE2012 OR EE2012A OR MA2216 OR MA2116 OR MA2116T OR ST2131 OR ST2334) AND (CS3244 OR CG3201 OR CS3264)),https://nusmods.com/courses/CS5562
+CS6203,Advanced Topics in Database Systems,4,2,CS3223,https://nusmods.com/courses/CS6203
+CS6206,Advanced Topics in Human-Computer Interaction,4,2,CS3240,https://nusmods.com/courses/CS6206
+CS6207,Advanced Natural Language Processing,4,2,CS4248,https://nusmods.com/courses/CS6207
+CS6208,Advanced Topics in Artificial Intelligence,4,1,(CS3263 OR CS3243),https://nusmods.com/courses/CS6208
+CS6211,Analytical Performance Modelling for Computer Systems,4,2,((ST2334 OR ST2131) AND CS2105 AND CS2106),https://nusmods.com/courses/CS6211
+CS6215,Advanced Topics in Program Analysis,4,1,(CS3230 AND CS4212),https://nusmods.com/courses/CS6215
+CS6216,Advanced Topics in Machine Learning,4,"1,2",(CS3264 OR CS3244),https://nusmods.com/courses/CS6216
+CS6219,Advanced Topics in Computer Systems,4,1,(CS2105 AND CS2106),https://nusmods.com/courses/CS6219
+CS6222,Advanced Topics in Computational Biology,4,2,CS2220,https://nusmods.com/courses/CS6222
+CS6223,Advanced Topics in Software Testing,4,1,(CS3213 OR CS4218 OR CS5219),https://nusmods.com/courses/CS6223
+CS6230,Topics in Information Security,4,1,(CS4236 OR CS5321),https://nusmods.com/courses/CS6230
+CS6231,Advanced Topics in Security and Privacy,4,1,(CS4236 OR CS3235 OR CS5231),https://nusmods.com/courses/CS6231
+CS6234,Advanced Algorithms,4,2,CS5234,https://nusmods.com/courses/CS6234
+CS6235,Advanced Topics in Theoretical Computer Science,4,1,CS3230,https://nusmods.com/courses/CS6235
+CS6240,Multimedia Analysis,4,2,(CS4243 OR CS5240),https://nusmods.com/courses/CS6240
+CS6244,Advanced Topics in Robotics,4,1,(CS3230 AND (ST2131 OR ST2334) AND (MA2001 OR MA1101R OR MA1311 OR MA1506 OR MA1508E OR MA1522)),https://nusmods.com/courses/CS6244
+DAO2703,Operations and Technology Management,4,"1,2",Applicable matriculation cohort,https://nusmods.com/courses/DAO2703
+DSA1101,Introduction to Data Science,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/DSA1101
+DSA2102,Essential Data Analytics Tools: Numerical Computation,4,"1,2",((MA1508E OR MA1513 OR MA1522 OR MA2001) AND (MA1312 OR MA1505 OR MA1511 OR MA1521 OR MA2002)),https://nusmods.com/courses/DSA2102
+DTK1234,Design Thinking,4,"1,2",No course prerequisite,https://nusmods.com/courses/DTK1234
+EC1101E,Introduction to Economic Analysis,4,"1,2",No course prerequisite,https://nusmods.com/courses/EC1101E
+EC2303,Foundations for Econometrics,4,"1,2",No course prerequisite,https://nusmods.com/courses/EC2303
+EC3303,Econometrics I,4,"1,2",((EC1101E OR EC1301 OR BSP1005 OR BSP1703 OR BSP1703X OR RE1704) AND (EC2303 OR DSC1007 OR DSC1007X OR BT1101 OR SA% OR ST% OR MA2216)),https://nusmods.com/courses/EC3303
+EG1311,Design and Make,4,"1,2",No course prerequisite,https://nusmods.com/courses/EG1311
+EL1101E,The Nature of Language,4,"1,2",No course prerequisite,https://nusmods.com/courses/EL1101E
+ES2660,Communicating in the Information Age,4,"1,2",Applicable matriculation cohort,https://nusmods.com/courses/ES2660
+FIN3702A,Investment Analysis and Portfolio Management,4,1,(FIN2704% AND Applicable matriculation cohort),https://nusmods.com/courses/FIN3702A
+FIN3702B,Investment Analysis and Portfolio Management,4,"1,2",(FIN2704% AND Applicable matriculation cohort),https://nusmods.com/courses/FIN3702B
+FIN3702C,Investment Analysis and Portfolio Management,4,2,(FIN2704% AND Applicable matriculation cohort),https://nusmods.com/courses/FIN3702C
+FIN3702D,Investment Analysis and Portfolio Management,4,2,(FIN2704% AND Applicable matriculation cohort),https://nusmods.com/courses/FIN3702D
+FIN3716,Financial Modelling,4,"1,2",(ACC1701% AND FIN2704% AND FIN3702% AND Applicable matriculation cohort),https://nusmods.com/courses/FIN3716
+GE2103,Our Planet: An Earth System Science Perspective,4,1,No course prerequisite,https://nusmods.com/courses/GE2103
+GE3255,"Aquatic, Riparian and Coastal Systems",4,1,No course prerequisite,https://nusmods.com/courses/GE3255
+GE3256,"Earth Surface Processes, Landforms and Ecosystems",4,1,No course prerequisite,https://nusmods.com/courses/GE3256
+GEA1000,Quantitative Reasoning with Data,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEA1000
+GEC1002,Nations & Nationalism in South Asia,4,1,No course prerequisite,https://nusmods.com/courses/GEC1002
+GEC1003,"Pirates, Oceans and the Maritime World",4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1003
+GEC1004,"Samurai, Geisha, Yakuza as Self or Other",4,2,No course prerequisite,https://nusmods.com/courses/GEC1004
+GEC1005,Cultural Borrowing: Japan and China,4,1,No course prerequisite,https://nusmods.com/courses/GEC1005
+GEC1007,Geopolitics: Geographies of War & Peace,4,2,No course prerequisite,https://nusmods.com/courses/GEC1007
+GEC1011,Microbes which Changed Human History,4,2,No course prerequisite,https://nusmods.com/courses/GEC1011
+GEC1013,World Religions,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1013
+GEC1014,Social and Cultural Studies through Music,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1014
+GEC1015,Public Health in Action,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1015
+GEC1016,Plants and Society,4,2,No course prerequisite,https://nusmods.com/courses/GEC1016
+GEC1017,Film Art and Human Concerns,4,1,No course prerequisite,https://nusmods.com/courses/GEC1017
+GEC1023,Social History of the Piano,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1023
+GEC1024,Ghosts and Spirits in Society and Culture,4,1,No course prerequisite,https://nusmods.com/courses/GEC1024
+GEC1028,Luck,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1028
+GEC1030,Metropolis: The City in World History,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1030
+GEC1031,Whatever it takes? Making War on Civilians,4,2,No course prerequisite,https://nusmods.com/courses/GEC1031
+GEC1032,Home,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1032
+GEC1034,Understanding the Changing Global Economic Landscape,4,1,No course prerequisite,https://nusmods.com/courses/GEC1034
+GEC1037,Big Picture History,4,1,No course prerequisite,https://nusmods.com/courses/GEC1037
+GEC1038,Asian Cinema: The Silent Era,4,2,No course prerequisite,https://nusmods.com/courses/GEC1038
+GEC1039,International Relations of Asia,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1039
+GEC1040,A Culture of Sustainability,4,1,No course prerequisite,https://nusmods.com/courses/GEC1040
+GEC1041,Crime Fiction and Film across Space & Time,4,2,No course prerequisite,https://nusmods.com/courses/GEC1041
+GEC1043,Feasting and Fasting: Global Histories of Food,4,1,No course prerequisite,https://nusmods.com/courses/GEC1043
+GEC1044,Chinese Medicine: Theory and Practice,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEC1044
+GEC1045,Forbidden Romance in Modern Times: East and West,4,1,No course prerequisite,https://nusmods.com/courses/GEC1045
+GEC1046,"Magic, Myths and Society in Southeast Asia",4,2,No course prerequisite,https://nusmods.com/courses/GEC1046
+GEC1048,Death and Dying in the Human Experience,4,1,No course prerequisite,https://nusmods.com/courses/GEC1048
+GEC1049,Powerful Court Women from Qing China and Other Cultures,4,1,No course prerequisite,https://nusmods.com/courses/GEC1049
+GEC1050,Skyscapes: Cultural Interpretations of the Sky,4,2,No course prerequisite,https://nusmods.com/courses/GEC1050
+GEC1051,"Merchants, Guns and Money: The Economics of War",4,2,No course prerequisite,https://nusmods.com/courses/GEC1051
+GEC1053,Rome and the Genealogy of Urban Life,4,1,No course prerequisite,https://nusmods.com/courses/GEC1053
+GEC1054,Fungi and Society,4,2,No course prerequisite,https://nusmods.com/courses/GEC1054
+GEC1055,700 Years of Visual Arts: Singapore in the World,4,1,No course prerequisite,https://nusmods.com/courses/GEC1055
+GEN2000,Living Culture: Engaging Indian Communities in Singapore,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2000
+GEN2001,Theatre and Community Engagement,4,1,No course prerequisite,https://nusmods.com/courses/GEN2001
+GEN2002Y,Projects Against Threat to Community,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2002Y
+GEN2004,"Green Communities in Action: Climate, Species, Crisis",4,2,No course prerequisite,https://nusmods.com/courses/GEN2004
+GEN2006,Communications for Inter-generational Engagement,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2006
+GEN2007,Resilience in Restoration,4,"2,3",No course prerequisite,https://nusmods.com/courses/GEN2007
+GEN2008,Purposeful and Productive Ageing in the Community,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2008
+GEN2009,Voices from the ground: stories & community narratives,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2009
+GEN2050X,Teach SG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2050X
+GEN2050Y,Teach SG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2050Y
+GEN2060X,Reconnect SeniorsSG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2060X
+GEN2060Y,Reconnect SeniorsSG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2060Y
+GEN2061X,Support Healthy AgeingSG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2061X
+GEN2061Y,Support Healthy AgeingSG,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2061Y
+GEN2062X,Community Activities for Seniors,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2062X
+GEN2062Y,Community Activities for Seniors,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2062Y
+GEN2070X,Community Link (ComLink) Befrienders,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2070X
+GEN2070Y,Community Link (ComLink) Befrienders,4,"1,2",No course prerequisite,https://nusmods.com/courses/GEN2070Y
+GEN2072X,Enable Inclusive Communities SG,4,1,No course prerequisite,https://nusmods.com/courses/GEN2072X
+GESS1000,Global EC Dimensions of Singapore,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1000
+GESS1001,Changing Landscapes of Singapore,4,1,No course prerequisite,https://nusmods.com/courses/GESS1001
+GESS1002,The Biophysical Environment of Singapore,4,2,No course prerequisite,https://nusmods.com/courses/GESS1002
+GESS1003,Everyday Life of Chinese Singaporeans: Past & Present (taught in English),4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1003
+GESS1004,Singapore and India: Emerging Relations,4,2,No course prerequisite,https://nusmods.com/courses/GESS1004
+GESS1005,South Asia in Singapore,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1005
+GESS1006,Ethnicity and Nation-Building: Singapore and Malaysia,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1006
+GESS1007,Singapore’s Business History,4,1,No course prerequisite,https://nusmods.com/courses/GESS1007
+GESS1009,The Evolution of a Global City-State,4,"1,4",No course prerequisite,https://nusmods.com/courses/GESS1009
+GESS1011,Singapore Architecture and Built Heritage,4,2,No course prerequisite,https://nusmods.com/courses/GESS1011
+GESS1012,Islam and Contemporary Malay Society,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1012
+GESS1013,Singapore and Japan: Historical and Contemporary Relationships,4,1,No course prerequisite,https://nusmods.com/courses/GESS1013
+GESS1014,Managing Singapore's Built Environment,4,1,No course prerequisite,https://nusmods.com/courses/GESS1014
+GESS1015,Western Music within a Singaporean Context,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1015
+GESS1016,Natural Heritage of Singapore,4,1,Applicable matriculation cohort,https://nusmods.com/courses/GESS1016
+GESS1018,Real Estate Development & Investment Law,4,1,No course prerequisite,https://nusmods.com/courses/GESS1018
+GESS1020,Singapore Society,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1020
+GESS1021,Singapore Film: Performance of Identity,4,2,No course prerequisite,https://nusmods.com/courses/GESS1021
+GESS1024,We the Citizens - Understanding Singapore’s Politics,4,1,No course prerequisite,https://nusmods.com/courses/GESS1024
+GESS1025,Singapore: Imagining the Next 50 Years,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1025
+GESS1026,A History of Singapore in Ten Objects,4,2,No course prerequisite,https://nusmods.com/courses/GESS1026
+GESS1028,Cultural Performances and Practices in Singapore,4,2,No course prerequisite,https://nusmods.com/courses/GESS1028
+GESS1029,Everyday Ethics in Singapore,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1029
+GESS1030,Public Health in Singapore: Challenges and Changes,4,2,No course prerequisite,https://nusmods.com/courses/GESS1030
+GESS1035,Singapore and the Sea,4,1,No course prerequisite,https://nusmods.com/courses/GESS1035
+GESS1036,Singapore Employment Law and Policies,4,"1,2",No course prerequisite,https://nusmods.com/courses/GESS1036
+HSA1000,Asian Interconnections,4,"1,2",No course prerequisite,https://nusmods.com/courses/HSA1000
+HSI1000,"How Science Works, Why Science Works",4,"1,2",No course prerequisite,https://nusmods.com/courses/HSI1000
+HSI2001,"Scientific Inquiry & Health: Good Science, Bad Science",4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2001
+HSI2002,Inquiry into Current Sporting Beliefs and Practices,4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2002
+HSI2003,From DNA to Gene Therapy,4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2003
+HSI2004,Cell Based Proteins for a Sustainable Future,4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2004
+HSI2005,Our Science Stories and You,4,"1,2",(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2005
+HSI2007,Deconstructing Food,4,1,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2007
+HSI2008,A Brief History of Science & Why Things Often Go Wrong,4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2008
+HSI2009,What is a Planet?,4,2,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2009
+HSI2010,New Worlds Beyond Earth,4,1,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2010
+HSI2011,The World of Quantum,4,"1,2",(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2011
+HSI2013,The Science of Music,4,"1,2",(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2013
+HSI2014,"Science, Medical Technology and Society",4,1,(HSI1000 OR SP2274 OR NSS2001%),https://nusmods.com/courses/HSI2014
+HSS1000,Understanding Social Complexity,4,"1,2",No course prerequisite,https://nusmods.com/courses/HSS1000
+IE2141,Systems Thinking and Dynamics,4,"1,2",No course prerequisite,https://nusmods.com/courses/IE2141
+IS1108,Digital and AI Ethics,4,"1,2",No course prerequisite,https://nusmods.com/courses/IS1108
+IS1128,"IT, Management and Organisation",4,"1,2",No course prerequisite,https://nusmods.com/courses/IS1128
+IS2218,Digital Platforms for Business,4,"1,2",No course prerequisite,https://nusmods.com/courses/IS2218
+IS2238,Economics of IT and AI,4,"1,2",No course prerequisite,https://nusmods.com/courses/IS2238
+MA1100,Basic Discrete Mathematics,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1100
+MA1100T,Basic Discrete Mathematics (T),4,1,(MA1301 OR MA1301X),https://nusmods.com/courses/MA1100T
+MA1301,Introductory Mathematics,4,"1,2",No course prerequisite,https://nusmods.com/courses/MA1301
+MA1301X,Introductory Mathematics,4,"2,3",No course prerequisite,https://nusmods.com/courses/MA1301X
+MA1505,Mathematics I,4,1,(MA1301 OR MA1301X),https://nusmods.com/courses/MA1505
+MA1508E,Linear Algebra for Engineering,4,2,(MA1301 OR MA1301X),https://nusmods.com/courses/MA1508E
+MA1511,Engineering Calculus,2,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1511
+MA1512,Differential Equations for Engineering,2,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1512
+MA1513,Linear Algebra with Differential Equations,2,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1513
+MA1521,Calculus for Computing,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1521
+MA1522,Linear Algebra for Computing,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1522
+MA1531,Calculus for Data Science,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA1531
+MA2001,Linear Algebra I,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA2001
+MA2002,Calculus,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/MA2002
+MA2101,Linear Algebra II,4,"1,2",((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/MA2101
+MA2101S,Linear Algebra II (S),5,1,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/MA2101S
+MA2104,Multivariable Calculus,4,"1,2",(MA2002 OR MA1505 OR MA1511 OR MA1521),https://nusmods.com/courses/MA2104
+MA2108,Mathematical Analysis I,4,"1,2",((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1505 OR MA1511 OR MA1521 OR MA2002)),https://nusmods.com/courses/MA2108
+MA2108S,Mathematical Analysis I (S),5,2,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1505 OR MA1511 OR MA1521 OR MA2002)),https://nusmods.com/courses/MA2108S
+MA2116,Probability,4,"1,2",(MA1312 OR MA1505 OR MA1511 OR MA1521 OR MA2002),https://nusmods.com/courses/MA2116
+MA2116T,Probability (T),4,1,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA2104 OR MA2311)),https://nusmods.com/courses/MA2116T
+MA2202,Algebra I,4,2,(MA1100 OR MA1100T OR CS1231 OR CS1231S),https://nusmods.com/courses/MA2202
+MA2202S,Algebra I (S),5,2,(MA1100 OR MA1100T OR CS1231 OR CS1231S),https://nusmods.com/courses/MA2202S
+MA2213,Numerical Analysis I,4,2,((MA1312 OR MA1505 OR MA1511 OR MA1521 OR MA2002) AND (MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/MA2213
+MA2214,Combinatorics and Graphs I,4,1,((CS1231 OR CS1231S OR MA1100 OR MA1100T) AND (MA1311 OR MA1508E OR MA1513 OR MA1522 OR MA2001)),https://nusmods.com/courses/MA2214
+MA2311,Techniques in Advanced Calculus,4,"1,2",(MA2002 OR MA1312 OR MA1521),https://nusmods.com/courses/MA2311
+MA3201,Algebra II,4,1,((MA2202 OR MA2202S) AND (MA2101 OR MA2101S)),https://nusmods.com/courses/MA3201
+MA3205,Set Theory,4,2,(MA1100 OR MA1100T OR CS1231 OR CS1231S),https://nusmods.com/courses/MA3205
+MA3209,Metric and Topological Spaces,4,1,(MA2108 OR MA2108S),https://nusmods.com/courses/MA3209
+MA3210,Mathematical Analysis II,4,1,((MA2101 OR MA2101S) AND (MA2108 OR MA2108S)),https://nusmods.com/courses/MA3210
+MA3211,Complex Analysis I,4,2,((MA2104 OR MA2311) AND (MA2108 OR MA2108S)),https://nusmods.com/courses/MA3211
+MA3211S,Complex Analysis I (S),5,2,((MA2104 OR MA2311) AND (MA2108 OR MA2108S)),https://nusmods.com/courses/MA3211S
+MA3220,Ordinary Differential Equations,4,1,((MA1505 OR MA1511 OR MA1521 OR MA2104 OR MA2311) AND (MA1311 OR MA2001 OR MA1513 OR MA1522 OR MA1508E) AND (MA2108 OR MA2108S)),https://nusmods.com/courses/MA3220
+MA3233,Combinatorics and Graphs II,4,2,(MA2214 AND (MA2108 OR MA2108S OR MA2101 OR MA2101S OR MA2202 OR MA2202S)),https://nusmods.com/courses/MA3233
+MA3236,Non-Linear Programming,4,1,(MA1505 OR MA1511 OR MA2104 OR MA2311),https://nusmods.com/courses/MA3236
+MA3238,Stochastic Processes I,4,1,((MA1508E OR MA1513 OR MA1522 OR MA2001) AND (MA2116T OR MA2116 OR ST2131 OR ST2334)),https://nusmods.com/courses/MA3238
+MA3238S,Stochastic Processes I (S),5,2,((MA2116 OR ST2131 OR MA2116T) AND (MA2108 OR MA2108S)),https://nusmods.com/courses/MA3238S
+MA3252,Linear and Network Optimisation,4,2,(MA1311 OR MA2001 OR MA1508E OR MA1513 OR MA1522),https://nusmods.com/courses/MA3252
+MA3264,Mathematical Modelling,4,1,(MA2104 OR MA2108 OR MA2108S OR MA1505 OR MA1511 OR MA2311),https://nusmods.com/courses/MA3264
+MA3265,Introduction to Number Theory,4,2,(MA2202 OR MA2202S),https://nusmods.com/courses/MA3265
+MA3270,Mathematics for Artificial Intelligence,4,1,((MA1508E OR MA1513 OR MA1522 OR MA2001) AND (MA1505 OR MA1511 OR MA2104 OR MA2311) AND (MA2116 OR MA2116T OR ST2131 OR ST2334)),https://nusmods.com/courses/MA3270
+MNO1706X,Organisational Behaviour,4,"1,2",Applicable matriculation cohort,https://nusmods.com/courses/MNO1706X
+NUR1113A,Healthy Ageing and Well-being,4,"1,2",No course prerequisite,https://nusmods.com/courses/NUR1113A
+PC2174A,Mathematical Methods in Physics I,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/PC2174A
+PC3274A,Mathematical Methods in Physics II,4,"1,2",(PC2174A OR ((MA1505 OR MA1511 OR MA1512 OR MA1521 OR MA2104) AND (MA1508E OR MA1513 OR MA1522 OR MA2001))),https://nusmods.com/courses/PC3274A
+PE2101P,"Introduction to Philosophy, Politics, and Economics",4,2,No course prerequisite,https://nusmods.com/courses/PE2101P
+PF1101A,Project Management and Finance,4,"1,2",No course prerequisite,https://nusmods.com/courses/PF1101A
+QF1100,Introduction to Quantitative Finance,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/QF1100
+QF2103,Computing with AI for Quantitative Finance,4,2,(QF2104 AND (CS1010 OR CS1010A OR CS1010E OR CS1010S OR CS1010X OR CS1101S OR UTC2851)),https://nusmods.com/courses/QF2103
+QF2104,Fundamentals of Quantitative Finance,4,"1,2",(QF1100 AND (MA2301 OR ((MA2001 OR MA1508E OR MA1513 OR MA1522) AND (EC2303 OR MA2116 OR MA2116T OR ST2131 OR ST2334)))),https://nusmods.com/courses/QF2104
+QF3101,Investment Instruments and Risk Management,4,"1,2",((MA1505 OR MA1511 OR MA1521 OR MA2104 OR MA2311) AND QF2104 AND (CS1010 OR CS1010A OR CS1010E OR CS1010S OR CS1010X OR CS1101S OR UTC2851)),https://nusmods.com/courses/QF3101
+QF3103,Advanced Mathematics in Quantitative Finance,4,2,(QF1100 AND (MA2301 OR EC2303 OR MA2116 OR ST2131 OR ST2334)),https://nusmods.com/courses/QF3103
+SC1101E,Making Sense of Society,4,"1,2",No course prerequisite,https://nusmods.com/courses/SC1101E
+SC2226,Sociology of Mental Health,4,2,No course prerequisite,https://nusmods.com/courses/SC2226
+SPH2002,Public Health and Epidemiology,4,"1,2",No course prerequisite,https://nusmods.com/courses/SPH2002
+ST1131,Introduction to Statistics and Statistical Computing,4,"1,2",(MA1301 OR MA1301X),https://nusmods.com/courses/ST1131
+ST2131,Probability,4,"1,2",(MA1312 OR MA1505 OR MA1511 OR MA1521 OR MA2002),https://nusmods.com/courses/ST2131
+ST2334,Probability and Statistics,4,"1,2",(MA1312 OR MA1505 OR MA1511 OR MA1521 OR MA2002),https://nusmods.com/courses/ST2334
+ST3131,Regression Analysis,4,"1,2",(ST2334 OR ST2131 OR MA2116 OR MA2116T),https://nusmods.com/courses/ST3131
+ST3236,Stochastic Processes I,4,1,((MA1508E OR MA2001 OR MA1522) AND (ST2131 OR ST2334 OR MA2116 OR MA2116T)),https://nusmods.com/courses/ST3236

@@ -1,0 +1,27 @@
+\begin{table}[htbp]\centering
+\begin{tabular}{@{}llrrrrrr@{}}\toprule
+Method & Input & Prereq. & Core & Units & Focus & GE/ID & Pair\\\midrule
+Qwen 3.6 & A & \badcount{21} & \badcount{2} & \okzero & \okzero & \badcount{2} & \okzero \\
+Qwen 3.6 & AP & \badcount{4} & \badcount{2} & \okzero & \badcount{1} & \badcount{2} & \okzero \\
+Qwen 3.6 & APR & \badcount{5} & \okzero & \okzero & \okzero & \badcount{2} & \okzero \\
+\addlinespace[2pt]
+Qwen Coder & A & \badcount{8} & \badcount{2} & \okzero & \badcount{1} & \badcount{1} & \okzero \\
+Qwen Coder & AP & \badcount{2} & \badcount{2} & \okzero & \badcount{1} & \badcount{1} & \okzero \\
+Qwen Coder & APR & \okzero & \okzero & \okzero & \okzero & \badcount{1} & \okzero \\
+\addlinespace[2pt]
+Qwen VL & A & \badcount{7} & \badcount{2} & \okzero & \okzero & \badcount{4} & \okzero \\
+Qwen VL & AP & \badcount{5} & \badcount{2} & \okzero & \badcount{1} & \badcount{5} & \okzero \\
+\addlinespace[2pt]
+Astra & A & \okzero & \okzero & \okzero & \badcount{1} & \okzero & \okzero \\
+Astra & AP & \badcount{1} & \okzero & \okzero & \okzero & \okzero & \okzero \\
+Astra & APR & \okzero & \okzero & \okzero & \okzero & \okzero & \okzero \\
+\addlinespace[2pt]
+Sol & A & \badcount{1} & \badcount{1} & \okzero & \okzero & \okzero & \okzero \\
+Sol & AP & \okzero & \okzero & \okzero & \badcount{1} & \okzero & \okzero \\
+Sol & APR & \okzero & \okzero & \okzero & \okzero & \okzero & \okzero \\
+\addlinespace[2pt]
+\midrule
+Pathway CSP & APR & \okzero & \okzero & \okzero & \okzero & \okzero & \okzero \\
+\bottomrule\end{tabular}
+\caption{Violations of implemented academic requirements; lower is better. Prereq.: courses with an unsatisfied earlier-prerequisite tree. Core: missing foundation courses. Units: deficit below 160. Focus: failed AI-focus rule (0/1). GE/ID: failed GEC, GEA, GESS, GEN or ID/CD buckets (0--5). Pair: failed CS2101/CS2103T pairing (0/1). Every row is one actual generated plan; no error response is scored as a plan.}\label{tab:academic}
+\end{table}

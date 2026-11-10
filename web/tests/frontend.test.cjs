@@ -12,6 +12,8 @@ const config = {
   ], catalogue:[{code:'CS2102',title:'Database Systems',units:4,placeholder:false,semesters:[1,2]},{code:'CS1231S',title:'Discrete Structures',units:4,placeholder:false,semesters:[1,2]},
     {code:'DTK1234',title:'Design Thinking',units:4,placeholder:false,semesters:[1,2],categories:['ID'],source_urls:['https://www.comp.nus.edu.sg/cug/soc-22-23/']}],
   focus_areas:['Artificial Intelligence'],reference_year:'2026-2027',
+  minors:[{id:'mathematics',name:'Mathematics',summary:'20 units; grouped courses and sharing caps.',source_urls:['https://www.math.nus.edu.sg/ug/majmin/minors/mamin/']},
+    {id:'quantitative_finance',name:'Quantitative Finance',summary:'QF1100, QF2104 and QF3101.',source_urls:['https://www.math.nus.edu.sg/ug/majmin/minors/qfmin/']}],
 };
 const plan = {
   status:'feasible',total_units:4,last_semester:3,elapsed_seconds:1,optimal:true,
@@ -45,6 +47,25 @@ async function setup(handler,{motion=false,savedDraft,expectedCards=2}={}) {
   await until(()=>window.document.querySelectorAll('.constraint-card').length===expectedCards);
   return {dom,window,document:window.document,calls,animations,click:selector=>window.document.querySelector(selector).click()};
 }
+test('Study plan minor prompts add an optional hard rule under Minors and removal reaches the solver',async()=>{
+  const t=await setup();try {
+    assert.equal(t.document.querySelectorAll('.minor-option').length,2);
+    t.click('[data-minor-prompt="quantitative_finance"]');
+    assert.match(t.document.querySelector('#chat-input').value,/Minor in Quantitative Finance/);
+    assert.equal(t.calls.filter(c=>c.path==='/api/preferences').length,0);
+    t.click('[data-add-minor="mathematics"]');
+    assert.equal(t.document.querySelector('#tab-minor').getAttribute('aria-selected'),'true');
+    assert.equal(t.document.querySelector('#minor-count').textContent,'1');
+    assert.equal(t.document.querySelector('#hard-count').textContent,'2');
+    assert.match(t.document.querySelector('.constraint-card h3').textContent,/Minor in Mathematics/);
+    assert.match(t.document.querySelector('.requirement-sources a').href,/mamin/);
+    const remove=t.document.querySelector('[data-remove]');remove.click();
+    assert.equal(t.document.querySelector('#minor-count').textContent,'0');
+    t.click('#generate');await until(()=>t.calls.some(c=>c.path==='/api/plans'));
+    assert.ok(!t.calls.find(c=>c.path==='/api/plans').body.cards.flatMap(c=>c.rules).some(r=>r.type==='minor_programme'));
+    await until(()=>!t.document.querySelector('#generate').disabled);
+  } finally {t.dom.window.close();}
+});
 test('removing a card removes every nested solver rule; reset restores defaults',async()=>{
   const t=await setup();
   try {
