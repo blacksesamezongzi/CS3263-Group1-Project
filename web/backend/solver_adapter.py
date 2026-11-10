@@ -37,6 +37,13 @@ def solve_plan(request):
     # Keep their variables so conflicting explicit pins are infeasible, not errors.
     if request.math_qualified:
         satisfy([assignment[i] == 0 for i, c in enumerate(codes) if c in MATH_BRIDGING_COURSES])
+
+    # Need 3 4k level mods as a graduation reequirement
+    satisfy(Sum(CATALOG[c]["module_credit"] * (assignment[i] != 0) for i, c in enumerate(codes) if c.startswith("CS4")) >= 12)
+    
+    #By default, prefer to take foundation courses in the earlier semesters, but allow them to be taken later if necessary
+    minimize(Sum(assignment[i] for i, c in enumerate(codes) if c in FOUNDATION))
+
     minor_variables = {}
     programmes = selected_minors(request)
     for programme in programmes:
